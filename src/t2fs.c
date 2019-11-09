@@ -1,7 +1,8 @@
 
 /**
 */
-#include "t2fs.h"
+#include "../include/t2fs.h"
+#include <string.h>
 
 /*-----------------------------------------------------------------------------
 Função:	Informa a identificação dos desenvolvedores do T2FS.
@@ -85,28 +86,28 @@ int write2 (FILE2 handle, char *buffer, int size) {
 /*-----------------------------------------------------------------------------
 Função:	Função que abre um diretório existente no disco.
 -----------------------------------------------------------------------------*/
-DIR2 opendir2 (char *pathname) {
+int opendir2(void) {
 	return -1;
 }
 
 /*-----------------------------------------------------------------------------
 Função:	Função usada para ler as entradas de um diretório.
 -----------------------------------------------------------------------------*/
-int readdir2 (DIR2 handle, DIRENT2 *dentry) {
+int readdir2(DIRENT2 *dentry) {
 	return -1;
 }
 
 /*-----------------------------------------------------------------------------
 Função:	Função usada para fechar um diretório.
 -----------------------------------------------------------------------------*/
-int closedir2 (DIR2 handle) {
+int closedir2(void) {
 	return -1;
 }
 
 /*-----------------------------------------------------------------------------
 Função:	Função usada para criar um caminho alternativo (softlink)
 -----------------------------------------------------------------------------*/
-int sln2 (char *linkname, char *filename) {
+int sln2(char *linkname, char *filename) {
 	return -1;
 }
 

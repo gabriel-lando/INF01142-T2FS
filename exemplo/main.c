@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "apidisk.h"
+#include "../include/apidisk.h"
 
-void help() {
+static void help() {
 	
 	printf ("Testing program - read and write setores do arquivo t2fs_disk.dat\n");
 	printf ("   DISPLAY - d <setor>\n");
@@ -21,11 +21,12 @@ int main(int argc, char *argv[])
 	help();
 	while (1) {
 		printf ("CMD> ");
-		gets(command);
+		fgets(command, sizeof(command), stdin);
+		//gets(command);
 		if (strlen(command)==0)
 			continue;
 		
-		cmd = strtok(command, " ");
+		cmd = strtok(command, " \n");
 		
 		if (strcmp(cmd,"?")==0) {
 			help();
