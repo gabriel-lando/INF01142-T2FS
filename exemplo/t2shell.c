@@ -495,11 +495,22 @@ void cmdMan(void) {
 Chama a fun��o que formata o disco
 */
 void cmdFormat(void) {
+	int partition;
 	int sectors_per_block;
 	
-    char *token = strtok(NULL," \t");
+    char *token = strtok(NULL," \t\n");
     if (token==NULL) {
-        printf ("Missing block size (in sectors)\n");
+        printf("Missing partition number\n");
+        return;
+    }
+    if (sscanf(token, "%d", &partition) == 0) {
+        printf ("Invalid partition\n");
+        return;
+    }
+
+    token = strtok(NULL, " \t\n");
+    if (token == NULL) {
+        printf("Missing block size (in sectors)\n");
         return;
     }
     if (sscanf(token, "%d", &sectors_per_block)==0) {
@@ -507,7 +518,7 @@ void cmdFormat(void) {
         return;
     }
 
-    int err = format2 (0, sectors_per_block);
+    int err = format2(partition, sectors_per_block);
     if (err) {
         printf ("Error: %d\n", err);
         return;
