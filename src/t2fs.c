@@ -1,10 +1,34 @@
+/*
+Trabalho Prático II
+Implementação de um Sistema de Arquivos T2FS (revisão 21.10.19)
 
-/**
+O objetivo deste trabalho é a aplicação dos conceitos de sistemas operacionais
+na implementação de um sistema de arquivos que será chamado, daqui para diante,
+de T2FS (Task 2 – File System – Versão 2019.2) e deverá ser implementado,
+OBRIGATORIAMENTE, na linguagem “C”, sem o uso de outras bibliotecas, com exceção da libc.
+Além disso, a implementação deverá executar na máquina virtual fornecida no Moodle.
+
+Alunos: 
+	Gabriel Lando
+	Leonardo Lauryel
+	Thayná Minuzzo
 */
+
 #include "../include/t2fs.h"
 
-
+/*-----------------------------------------------------------------------------
+-> Habilitar o debug: linha abaixo descomentada.
+-> Desabilitar o debug: linha abaixo comentada.
+-----------------------------------------------------------------------------*/
 #define IS_DEBUG
+
+/*-----------------------------------------------------------------------------
+Variaveis globais
+-----------------------------------------------------------------------------*/
+int partitionMounted = -1;
+FILE2 openedFiles = { 0 };
+int fileCounter = 0;
+
 
 /*-----------------------------------------------------------------------------
 Função:	Informa a identificação dos desenvolvedores do T2FS.
@@ -21,6 +45,8 @@ Função extras essenciais para o funcionamento do programa
 static void DEBUG(char* format, ...);
 static DWORD strToInt(unsigned char* str, int size);
 static DWORD Checksum(void* data, int qty);
+static int isPartition(int partition);
+static void partitionSectors(int partition, DWORD* setor_inicial, DWORD* setor_final);
 
 
 
@@ -44,26 +70,14 @@ int format2(int partition, int sectors_per_block) {
 	}
 
 	// Testar se existe a partição
-	unsigned char buffer[SECTOR_SIZE];
+	int ret = 0;
+	if ((ret = isPartition(partition)))
+		return ret;
 
-	if (read_sector(0, buffer)) {
-		DEBUG("#ERRO format2: erro na leitura do setor 0\n");
-		return -2;
-	}
+	DWORD setor_inicial = 0;
+	DWORD setor_final = 0; 
+	partitionSectors(partition, &setor_inicial, &setor_final);
 
-	int qtd_partitions = strToInt(&buffer[6], 2);
-	//DEBUG("Qtde de particoes: %d\n", qtd_partitions);
-
-	if (partition >= qtd_partitions) {
-		DEBUG("#ERRO format2: particao invalida\n");
-		return -3;
-	}
-
-	int byte_inicial = strToInt(&buffer[4], 2) + 32 * partition;
-	//DEBUG("Byte inicial: %d\n", byte_inicial);
-
-	DWORD setor_inicial = strToInt(&buffer[byte_inicial], 4);
-	DWORD setor_final = strToInt(&buffer[byte_inicial + 4], 4);
 	DWORD qtde_setores = setor_final - setor_inicial + 1;
 	DWORD qtde_blocos = qtde_setores / sectors_per_block;
 
@@ -73,18 +87,13 @@ int format2(int partition, int sectors_per_block) {
 
 	DWORD minQtdBlocos = 2 + freeBlocksBitmapSize + freeInodeBitmapSize + inodeAreaSize;
 
-	//DEBUG("freeBlocksBitmapSize: %d   freeInodeBitmapSize: %d   inodeAreaSize: %d   minQtdBlocos: %d   Size inode: %d\n", freeBlocksBitmapSize, freeInodeBitmapSize, inodeAreaSize, minQtdBlocos, sizeof(struct t2fs_inode));
-
 	if (qtde_blocos < minQtdBlocos) {
 		DEBUG("#ERRO format2: ha poucos blocos (diminuir qtde de setores por bloco)\n");
 		return -4;
 	}
 
-	//DEBUG("Setor inicial: %d   Setor final: %d   Qtde de setores: %d  Qtde de blocos: %d\n", setor_inicial, setor_final, qtde_setores, qtde_blocos);
-
 	// Se está dentro do intervalo de partiçoes,
-	// cria novo superbloco e limpar bitmap de blocos e inodes
-
+	// cria novo superbloco e limpa bitmap de blocos e inodes
 	struct t2fs_superbloco newSuperbloco = {
 		.id = {'T', '2', 'F', 'S'},
 		.version = 0x7E32,
@@ -126,17 +135,30 @@ int format2(int partition, int sectors_per_block) {
 
 /*-----------------------------------------------------------------------------
 Função:	Monta a partição indicada por "partition" no diretório raiz
+
+Retorno:
+		 0: Sucesso
+		-2: Erro na leitura do setor zero do disco
+		-3: Numero da partição inválido
 -----------------------------------------------------------------------------*/
 int mount(int partition) {
+	// Testar se existe a partição
+	int ret = 0;
+	if ((ret = isPartition(partition)))
+		return ret;
 
-	return -1;
+	partitionMounted = partition;
+
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
 Função:	Desmonta a partição atualmente montada, liberando o ponto de montagem.
 -----------------------------------------------------------------------------*/
 int umount(void) {
-	return -1;
+	partitionMounted = -1;
+
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -147,6 +169,8 @@ Função:	Função usada para criar um novo arquivo no disco e abrí-lo,
 		assumirá um tamanho de zero bytes.
 -----------------------------------------------------------------------------*/
 FILE2 create2(char* filename) {
+
+	
 	return -1;
 }
 
@@ -225,6 +249,10 @@ int hln2(char* linkname, char* filename) {
 
 
 
+/*-----------------------------------------------------------------------------
+Função extras essenciais para o funcionamento do programa
+-----------------------------------------------------------------------------*/
+
 
 /*-----------------------------------------------------------------------------
 Função:	calcula Checksum
@@ -245,7 +273,49 @@ static DWORD Checksum(void* data, int qty) {
 	return ~checksum;
 }
 
+/*-----------------------------------------------------------------------------
+Função:	Retorna o primeiro e ultimo setor da partição como referencia
+-----------------------------------------------------------------------------*/
+static void partitionSectors(int partition, DWORD* setor_inicial, DWORD* setor_final) {
+	// Testar se existe a partição
+	unsigned char buffer[SECTOR_SIZE];
+	read_sector(0, buffer);
 
+	int byte_inicial = strToInt(&buffer[4], 2) + 32 * partition;
+
+	if(setor_inicial)
+		*setor_inicial = strToInt(&buffer[byte_inicial], 4);
+
+	if (setor_final)
+		*setor_final = strToInt(&buffer[byte_inicial + 4], 4);
+}
+
+/*-----------------------------------------------------------------------------
+Função:	verifica se a particao existe
+
+Retorno:
+		 0: Sucesso
+		-2: Erro na leitura do setor zero do disco
+		-3: Numero da partição inválido
+-----------------------------------------------------------------------------*/
+static int isPartition(int partition) {
+	// Testar se existe a partição
+	unsigned char buffer[SECTOR_SIZE];
+
+	if (read_sector(0, buffer)) {
+		DEBUG("#ERRO isPartition: erro na leitura do setor 0\n");
+		return -2;
+	}
+
+	int qtd_partitions = strToInt(&buffer[6], 2);
+
+	if (partition >= qtd_partitions || partition < 0) {
+		DEBUG("#ERRO isPartition: particao invalida\n");
+		return -3;
+	}
+
+	return 0;
+}
 
 /*-----------------------------------------------------------------------------
 Função:	converte string to int using little-endian
