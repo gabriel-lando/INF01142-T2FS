@@ -38,7 +38,7 @@ Retorno:
 		-5: Erro na escrita no disco
 -----------------------------------------------------------------------------*/
 int format2(int partition, int sectors_per_block) {
-	if (partition < 0 || sectors_per_block <= 0)	{
+	if (partition < 0 || sectors_per_block <= 0) {
 		DEBUG("#ERRO format2: parâmetros inválidos\n");
 		return -1;
 	}
@@ -46,7 +46,7 @@ int format2(int partition, int sectors_per_block) {
 	// Testar se existe a partição
 	unsigned char buffer[SECTOR_SIZE];
 
-	if (read_sector(0, buffer)){
+	if (read_sector(0, buffer)) {
 		DEBUG("#ERRO format2: erro na leitura do setor 0\n");
 		return -2;
 	}
@@ -75,8 +75,7 @@ int format2(int partition, int sectors_per_block) {
 
 	//DEBUG("freeBlocksBitmapSize: %d   freeInodeBitmapSize: %d   inodeAreaSize: %d   minQtdBlocos: %d   Size inode: %d\n", freeBlocksBitmapSize, freeInodeBitmapSize, inodeAreaSize, minQtdBlocos, sizeof(struct t2fs_inode));
 
-	if (qtde_blocos < minQtdBlocos)
-	{
+	if (qtde_blocos < minQtdBlocos) {
 		DEBUG("#ERRO format2: ha poucos blocos (diminuir qtde de setores por bloco)\n");
 		return -4;
 	}
@@ -107,8 +106,7 @@ int format2(int partition, int sectors_per_block) {
 	memcpy(superblocoArea, &newSuperbloco, sizeof(struct t2fs_superbloco));
 
 	for (DWORD i = 0; i < sectors_per_block; i++)
-		if (write_sector(setor_inicial + i, &superblocoArea[i * SECTOR_SIZE]))
-		{
+		if (write_sector(setor_inicial + i, &superblocoArea[i * SECTOR_SIZE])) {
 			DEBUG("#ERRO format2: erro na escrita do superbloco\n");
 			return -5;
 		}
@@ -118,8 +116,7 @@ int format2(int partition, int sectors_per_block) {
 
 	// Zera o restante da partição
 	for (DWORD i = 0; i < qtde_setores - sectors_per_block; i++)
-		if (write_sector(setor_inicial + sectors_per_block + i, emptySector))
-		{
+		if (write_sector(setor_inicial + sectors_per_block + i, emptySector)) {
 			DEBUG("#ERRO format2: erro ao apagar dados da particao\n");
 			return -5;
 		}
@@ -269,7 +266,7 @@ Equivalente a um printf(), porem verifica se esta em modo Debug ou nao.
 
 Se definida a variavel IS_DEBUG, os comandos de debug serao impressos.
 -----------------------------------------------------------------------------*/
-static void DEBUG(char *format, ...){
+static void DEBUG(char *format, ...) {
 
 #ifdef IS_DEBUG
 	va_list args;
