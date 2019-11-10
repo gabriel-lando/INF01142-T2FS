@@ -1,14 +1,13 @@
 /*
 Retornos:
-		 0: Sucesso
-		-1: Parâmetros inválidos
+		+0: Sucesso
+		-1: Parametros invalidos
 		-2: Erro na leitura do setor zero do disco
-		-3: Numero da partição inválido
-		-4: Setores por bloco não for divisor da qtde de setores da partição
+		-3: Numero da particao invalido
+		-4: Setores por bloco nao for divisor da qtde de setores da particao
 		-5: Erro na escrita no disco
 		-6: Checksum invalido
-		-7: Erro em operãcoes com funcoes de bitmap
-
+		-7: Erro em operacoes com funcoes de bitmap
 */
 
 #ifndef __LIBT2FS___
