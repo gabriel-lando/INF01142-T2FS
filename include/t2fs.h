@@ -21,9 +21,9 @@ typedef unsigned int DWORD;
 /** Registro com as informaï¿½ï¿½es da entrada de diretï¿½rio, lida com readdir2 */
 #define MAX_FILE_NAME_SIZE 255
 typedef struct {
-    char    name[MAX_FILE_NAME_SIZE+1]; /* Nome do arquivo cuja entrada foi lida do disco      */
-    BYTE    fileType;                   /* Tipo do arquivo: regular (0x01) ou diretï¿½rio (0x02) */
-    DWORD   fileSize;                   /* Numero de bytes do arquivo                          */
+	char    name[MAX_FILE_NAME_SIZE + 1]; /* Nome do arquivo cuja entrada foi lida do disco      */
+	BYTE    fileType;                   /* Tipo do arquivo: regular (0x01) ou diretï¿½rio (0x02) */
+	DWORD   fileSize;                   /* Numero de bytes do arquivo                          */
 } DIRENT2;
 
 #pragma pack(pop)
@@ -42,7 +42,7 @@ Entra:	name -> buffer onde colocar o string de identificaï¿½ï¿½o.
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna "0" (zero).
 	Em caso de erro, serï¿½ retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
-int identify2 (char *name, int size);
+int identify2(char* name, int size);
 
 
 /*-----------------------------------------------------------------------------
@@ -93,7 +93,7 @@ Entra:	filename -> nome do arquivo a ser criado.
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna o handle do arquivo (nï¿½mero positivo).
 	Em caso de erro, deve ser retornado um valor negativo.
 -----------------------------------------------------------------------------*/
-FILE2 create2 (char *filename);
+FILE2 create2(char* filename);
 
 
 /*-----------------------------------------------------------------------------
@@ -105,7 +105,7 @@ Entra:	filename -> nome do arquivo a ser apagado.
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna "0" (zero).
 	Em caso de erro, serï¿½ retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
-int delete2 (char *filename);
+int delete2(char* filename);
 
 
 /*-----------------------------------------------------------------------------
@@ -122,7 +122,7 @@ Entra:	filename -> nome do arquivo a ser apagado.
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna o handle do arquivo (nï¿½mero positivo)
 	Em caso de erro, deve ser retornado um valor negativo
 -----------------------------------------------------------------------------*/
-FILE2 open2 (char *filename);
+FILE2 open2(char* filename);
 
 
 /*-----------------------------------------------------------------------------
@@ -133,7 +133,7 @@ Entra:	handle -> identificador do arquivo a ser fechado
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna "0" (zero).
 	Em caso de erro, serï¿½ retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
-int close2 (FILE2 handle);
+int close2(FILE2 handle);
 
 
 /*-----------------------------------------------------------------------------
@@ -149,7 +149,7 @@ Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna o nï¿
 	Se o valor retornado for menor do que "size", entï¿½o o contador de posiï¿½ï¿½o atingiu o final do arquivo.
 	Em caso de erro, serï¿½ retornado um valor negativo.
 -----------------------------------------------------------------------------*/
-int read2 (FILE2 handle, char *buffer, int size);
+int read2(FILE2 handle, char* buffer, int size);
 
 
 /*-----------------------------------------------------------------------------
@@ -164,12 +164,12 @@ Entra:	handle -> identificador do arquivo a ser escrito
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna o nï¿½mero de bytes efetivamente escritos.
 	Em caso de erro, serï¿½ retornado um valor negativo.
 -----------------------------------------------------------------------------*/
-int write2 (FILE2 handle, char *buffer, int size);
+int write2(FILE2 handle, char* buffer, int size);
 
 
 /*-----------------------------------------------------------------------------
 Funï¿½ï¿½o:	Abre o diretï¿½rio raiz da partiï¿½ï¿½o ativa.
-		Se a operaï¿½ï¿½o foi realizada com sucesso, 
+		Se a operaï¿½ï¿½o foi realizada com sucesso,
 		a funï¿½ï¿½o deve posicionar o ponteiro de entradas (current entry) na primeira posiï¿½ï¿½o vï¿½lida do diretï¿½rio.
 
 Entra:	-
@@ -177,7 +177,7 @@ Entra:	-
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna "0" (zero).
 		Em caso de erro, serï¿½ retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
-int opendir2 (void);
+int opendir2(void);
 
 
 /*-----------------------------------------------------------------------------
@@ -194,7 +194,7 @@ Entra:	dentry -> estrutura de dados onde a funï¿½ï¿½o coloca as informaï¿½ï¿½es 
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna "0" (zero).
 		Em caso de erro, serï¿½ retornado um valor diferente de zero ( e "dentry" nï¿½o serï¿½ vï¿½lido)
 -----------------------------------------------------------------------------*/
-int readdir2 (DIRENT2 *dentry);
+int readdir2(DIRENT2* dentry);
 
 
 /*-----------------------------------------------------------------------------
@@ -205,7 +205,7 @@ Entra:	-
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna "0" (zero).
 		Em caso de erro, serï¿½ retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
-int closedir2 (void);
+int closedir2(void);
 
 
 /*-----------------------------------------------------------------------------
@@ -217,7 +217,7 @@ Entra:	linkname -> nome do link
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna "0" (zero).
 	Em caso de erro, serï¿½ retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
-int sln2(char *linkname, char *filename);
+int sln2(char* linkname, char* filename);
 
 
 /*-----------------------------------------------------------------------------
@@ -229,7 +229,7 @@ Entra:	linkname -> nome do link
 Saï¿½da:	Se a operaï¿½ï¿½o foi realizada com sucesso, a funï¿½ï¿½o retorna "0" (zero).
 	Em caso de erro, serï¿½ retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
-int hln2(char *linkname, char *filename);
+int hln2(char* linkname, char* filename);
 
 
 

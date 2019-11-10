@@ -12,7 +12,7 @@ Entra:	Número do setor onde se encontra o superbloco
 Retorna: ==0, se sucesso
 		 !=0, se erro
 ------------------------------------------------------------------------*/
-int openBitmap2 (int superbloco_sector);
+int openBitmap2(int superbloco_sector);
 
 /*------------------------------------------------------------------------
 Função:	Fecha os bitmaps de uma partição.
@@ -21,7 +21,7 @@ Entra:	-
 Retorna: ==0, se sucesso
 		 !=0, se erro
 ------------------------------------------------------------------------*/
-int closeBitmap2 (void);
+int closeBitmap2(void);
 
 /*------------------------------------------------------------------------
 	Recupera o bit indicado do bitmap solicitado
@@ -34,7 +34,7 @@ Retorna:
 	Sucesso: valor do bit: ZERO ou UM (0 ou 1)
 	Erro: número negativo
 ------------------------------------------------------------------------*/
-int	getBitmap2 (int handle, int bitNumber);
+int	getBitmap2(int handle, int bitNumber);
 
 /*------------------------------------------------------------------------
 	Seta o bit indicado do bitmap solicitado
@@ -50,7 +50,7 @@ Retorna
 	Sucesso: ZERO (0)
 	Erro: número negativo
 ------------------------------------------------------------------------*/
-int	setBitmap2 (int handle, int bitNumber, int bitValue);
+int	setBitmap2(int handle, int bitNumber, int bitValue);
 
 /*------------------------------------------------------------------------
 	Procura no bitmap solicitado pelo valor indicado
@@ -65,6 +65,6 @@ Retorna
 		Não achou: ZERO
 	Erro: número negativo
 ------------------------------------------------------------------------*/
-int	searchBitmap2 (int handle, int bitValue);
+int	searchBitmap2(int handle, int bitValue);
 
 #endif

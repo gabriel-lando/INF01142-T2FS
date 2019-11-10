@@ -9,7 +9,7 @@
 /*-----------------------------------------------------------------------------
 Função:	Informa a identificação dos desenvolvedores do T2FS.
 -----------------------------------------------------------------------------*/
-int identify2 (char *name, int size) {
+int identify2(char* name, int size) {
 	strncpy(name, "Gabriel Lando - 00291399\nLeonardo Lauryel - 00275616\nThayná Minuzzo - 00262525", size);
 	return 0;
 }
@@ -18,15 +18,15 @@ int identify2 (char *name, int size) {
 /*-----------------------------------------------------------------------------
 Função extras essenciais para o funcionamento do programa
 -----------------------------------------------------------------------------*/
-static void DEBUG(char *format, ...);
-static DWORD strToInt(unsigned char *str, int size);
-static DWORD Checksum(void *data, int qty);
+static void DEBUG(char* format, ...);
+static DWORD strToInt(unsigned char* str, int size);
+static DWORD Checksum(void* data, int qty);
 
 
 
 /*-----------------------------------------------------------------------------
 Função:	Formata logicamente uma partição do disco virtual t2fs_disk.dat para o sistema de
-		arquivos T2FS definido usando blocos de dados de tamanho 
+		arquivos T2FS definido usando blocos de dados de tamanho
 		corresponde a um múltiplo de setores dados por sectors_per_block.
 
 Retorno:
@@ -98,11 +98,11 @@ int format2(int partition, int sectors_per_block) {
 	};
 
 	// Calculando Checksum
-	newSuperbloco.Checksum = Checksum((void *)&newSuperbloco, 5);
+	newSuperbloco.Checksum = Checksum((void*)&newSuperbloco, 5);
 
 	// ESCREVER DADOS NA PARTICAO
 	// Gravar super bloco na partição formatada
-	unsigned char *superblocoArea = (unsigned char *)calloc((size_t)(SECTOR_SIZE * sectors_per_block), sizeof(unsigned char));
+	unsigned char* superblocoArea = (unsigned char*)calloc((size_t)(SECTOR_SIZE * sectors_per_block), sizeof(unsigned char));
 	memcpy(superblocoArea, &newSuperbloco, sizeof(struct t2fs_superbloco));
 
 	for (DWORD i = 0; i < sectors_per_block; i++)
@@ -112,7 +112,7 @@ int format2(int partition, int sectors_per_block) {
 		}
 
 	// Alocar e zerar area de memoria
-	unsigned char *emptySector = (unsigned char *)calloc(SECTOR_SIZE, sizeof(unsigned char));
+	unsigned char* emptySector = (unsigned char*)calloc(SECTOR_SIZE, sizeof(unsigned char));
 
 	// Zera o restante da partição
 	for (DWORD i = 0; i < qtde_setores - sectors_per_block; i++)
@@ -142,32 +142,32 @@ int umount(void) {
 /*-----------------------------------------------------------------------------
 Função:	Função usada para criar um novo arquivo no disco e abrí-lo,
 		sendo, nesse último aspecto, equivalente a função open2.
-		No entanto, diferentemente da open2, se filename referenciar um 
-		arquivo já existente, o mesmo terá seu conteúdo removido e 
+		No entanto, diferentemente da open2, se filename referenciar um
+		arquivo já existente, o mesmo terá seu conteúdo removido e
 		assumirá um tamanho de zero bytes.
 -----------------------------------------------------------------------------*/
-FILE2 create2 (char *filename) {
+FILE2 create2(char* filename) {
 	return -1;
 }
 
 /*-----------------------------------------------------------------------------
-Função:	Função usada para remover (apagar) um arquivo do disco. 
+Função:	Função usada para remover (apagar) um arquivo do disco.
 -----------------------------------------------------------------------------*/
-int delete2 (char *filename) {
+int delete2(char* filename) {
 	return -1;
 }
 
 /*-----------------------------------------------------------------------------
 Função:	Função que abre um arquivo existente no disco.
 -----------------------------------------------------------------------------*/
-FILE2 open2 (char *filename) {
+FILE2 open2(char* filename) {
 	return -1;
 }
 
 /*-----------------------------------------------------------------------------
 Função:	Função usada para fechar um arquivo.
 -----------------------------------------------------------------------------*/
-int close2 (FILE2 handle) {
+int close2(FILE2 handle) {
 	return -1;
 }
 
@@ -175,7 +175,7 @@ int close2 (FILE2 handle) {
 Função:	Função usada para realizar a leitura de uma certa quantidade
 		de bytes (size) de um arquivo.
 -----------------------------------------------------------------------------*/
-int read2 (FILE2 handle, char *buffer, int size) {
+int read2(FILE2 handle, char* buffer, int size) {
 	return -1;
 }
 
@@ -183,7 +183,7 @@ int read2 (FILE2 handle, char *buffer, int size) {
 Função:	Função usada para realizar a escrita de uma certa quantidade
 		de bytes (size) de  um arquivo.
 -----------------------------------------------------------------------------*/
-int write2 (FILE2 handle, char *buffer, int size) {
+int write2(FILE2 handle, char* buffer, int size) {
 	return -1;
 }
 
@@ -197,7 +197,7 @@ int opendir2(void) {
 /*-----------------------------------------------------------------------------
 Função:	Função usada para ler as entradas de um diretório.
 -----------------------------------------------------------------------------*/
-int readdir2(DIRENT2 *dentry) {
+int readdir2(DIRENT2* dentry) {
 	return -1;
 }
 
@@ -211,14 +211,14 @@ int closedir2(void) {
 /*-----------------------------------------------------------------------------
 Função:	Função usada para criar um caminho alternativo (softlink)
 -----------------------------------------------------------------------------*/
-int sln2(char *linkname, char *filename) {
+int sln2(char* linkname, char* filename) {
 	return -1;
 }
 
 /*-----------------------------------------------------------------------------
 Função:	Função usada para criar um caminho alternativo (hardlink)
 -----------------------------------------------------------------------------*/
-int hln2(char *linkname, char *filename) {
+int hln2(char* linkname, char* filename) {
 	return -1;
 }
 
@@ -234,9 +234,9 @@ Entrada:
 		qty:  quantidade de bytes para calcular
 Retorno: valor do checksum
 -----------------------------------------------------------------------------*/
-static DWORD Checksum(void *data, int qty) {
+static DWORD Checksum(void* data, int qty) {
 
-	DWORD *calcChecksum = (DWORD *)data;
+	DWORD* calcChecksum = (DWORD*)data;
 	unsigned long long int tmpChecksum = 0;
 	for (int i = 0; i < qty; i++)
 		tmpChecksum += calcChecksum[i];
@@ -250,11 +250,11 @@ static DWORD Checksum(void *data, int qty) {
 /*-----------------------------------------------------------------------------
 Função:	converte string to int using little-endian
 -----------------------------------------------------------------------------*/
-static DWORD strToInt(unsigned char *str, int size) {
+static DWORD strToInt(unsigned char* str, int size) {
 	int ret = 0;
 
 	for (int i = size - 1; i >= 0; i--)
-		ret += str[i] * (1 << (8*i));
+		ret += str[i] * (1 << (8 * i));
 
 	return ret;
 }
@@ -266,7 +266,7 @@ Equivalente a um printf(), porem verifica se esta em modo Debug ou nao.
 
 Se definida a variavel IS_DEBUG, os comandos de debug serao impressos.
 -----------------------------------------------------------------------------*/
-static void DEBUG(char *format, ...) {
+static void DEBUG(char* format, ...) {
 
 #ifdef IS_DEBUG
 	va_list args;
