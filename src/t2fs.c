@@ -25,8 +25,10 @@ Alunos:
 /*-----------------------------------------------------------------------------
 Variaveis globais
 -----------------------------------------------------------------------------*/
+#define MAX_OPENED_FILES 10
+
 int partitionMounted = -1;
-FILE2 openedFiles = { 0 };
+FILE2 openedFiles[MAX_OPENED_FILES] = { 0 };
 int fileCounter = 0;
 
 
@@ -47,6 +49,7 @@ static DWORD strToInt(unsigned char* str, int size);
 static DWORD Checksum(void* data, int qty);
 static int isPartition(int partition);
 static void partitionSectors(int partition, DWORD* setor_inicial, DWORD* setor_final);
+static FILE2 findFileByName(char* filename);
 
 
 
@@ -81,11 +84,16 @@ int format2(int partition, int sectors_per_block) {
 	DWORD qtde_setores = setor_final - setor_inicial + 1;
 	DWORD qtde_blocos = qtde_setores / sectors_per_block;
 
-	WORD freeInodeBitmapSize = 1 + (WORD)((double)(qtde_blocos) / (SECTOR_SIZE * 8));
-	WORD freeBlocksBitmapSize = 1 + (WORD)((double)(qtde_blocos) / (SECTOR_SIZE * 8));
-	WORD inodeAreaSize = 1 + (WORD)((double)(qtde_blocos) * sizeof(struct t2fs_inode) / SECTOR_SIZE);
+	double val = ((double)(qtde_blocos) / (SECTOR_SIZE * 8));
+	WORD freeBlocksBitmapSize = ((WORD)val == val) ? ((WORD)val) : ((DWORD)(val + 1));
+	val = (double)qtde_blocos / 10;
+	WORD inodeAreaSize = ((DWORD)val == val) ? ((DWORD)val) : ((DWORD)(val + 1)); // round(10% da qtde de blocos)
+	val = ((double)inodeAreaSize * sectors_per_block) / (sizeof(struct t2fs_inode) * 8);
+	WORD freeInodeBitmapSize = ((DWORD)val == val) ? ((DWORD)val) : ((DWORD)(val + 1));
 
 	DWORD minQtdBlocos = 2 + freeBlocksBitmapSize + freeInodeBitmapSize + inodeAreaSize;
+
+	//DEBUG("freeBlocksBitmapSize: %d   freeInodeBitmapSize: %d   inodeAreaSize: %d   minQtdBlocos: %d   Size inode: %d\n", freeBlocksBitmapSize, freeInodeBitmapSize, inodeAreaSize, minQtdBlocos, sizeof(struct t2fs_inode));
 
 	if (qtde_blocos < minQtdBlocos) {
 		DEBUG("#ERRO format2: ha poucos blocos (diminuir qtde de setores por bloco)\n");
@@ -140,12 +148,25 @@ Retorno:
 		 0: Sucesso
 		-2: Erro na leitura do setor zero do disco
 		-3: Numero da partição inválido
+		-6: Checksum invalido
 -----------------------------------------------------------------------------*/
 int mount(int partition) {
 	// Testar se existe a partição
 	int ret = 0;
 	if ((ret = isPartition(partition)))
 		return ret;
+
+	DWORD setor_inicial = 0;
+	partitionSectors(partition, &setor_inicial, NULL);
+
+	unsigned char buffer[SECTOR_SIZE];
+	read_sector(setor_inicial, buffer);
+
+	// Calculando Checksum
+	if (Checksum((void*)buffer, 6)) {
+		DEBUG("#ERRO mount: erro ao verificar o checksum (partição corrompida)\n");
+		return -6;
+	}
 
 	partitionMounted = partition;
 
@@ -169,7 +190,7 @@ Função:	Função usada para criar um novo arquivo no disco e abrí-lo,
 		assumirá um tamanho de zero bytes.
 -----------------------------------------------------------------------------*/
 FILE2 create2(char* filename) {
-
+	findFileByName(filename);
 	
 	return -1;
 }
@@ -255,22 +276,63 @@ Função extras essenciais para o funcionamento do programa
 
 
 /*-----------------------------------------------------------------------------
-Função:	calcula Checksum
+Função:	Encontra um arquivo no disco
 
-Entrada:
-		data: ponteiro void* para uma estrutura
-		qty:  quantidade de bytes para calcular
-Retorno: valor do checksum
+Retorno:
+		 #: Identificador do arquivo
+		-3: Numero da partição inválido
+		-7: Erro ao abrir ou fechar bitmap
 -----------------------------------------------------------------------------*/
-static DWORD Checksum(void* data, int qty) {
+static FILE2 findFileByName(char* filename) {
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO findFileByName: particao nao montada\n");
+		return -3;
+	}
 
-	DWORD* calcChecksum = (DWORD*)data;
-	unsigned long long int tmpChecksum = 0;
-	for (int i = 0; i < qty; i++)
-		tmpChecksum += calcChecksum[i];
-	DWORD checksum = (DWORD)tmpChecksum + (DWORD)(tmpChecksum >> 32);
+	DWORD setor_inicial = 0;
+	partitionSectors(partitionMounted, &setor_inicial, NULL);
 
-	return ~checksum;
+	if (openBitmap2(setor_inicial)) {
+		DEBUG("#ERRO findFileByName: erro ao abrir bitmap\n");
+		return -7;
+	}
+
+	//getBitmap2(int handle, int bitNumber)
+	unsigned char buffer[SECTOR_SIZE];
+	read_sector(setor_inicial, buffer);
+
+	struct t2fs_superbloco superbloco;
+	memcpy(&superbloco, buffer, sizeof(struct t2fs_superbloco));
+
+	int numInodes = superbloco.inodeAreaSize * superbloco.blockSize * (SECTOR_SIZE / sizeof(struct t2fs_inode));
+
+	DEBUG("Qtde inodes: %d\n", numInodes);
+
+	int index = 0;
+	int ret = 0;
+	struct t2fs_inode *inode;
+
+	while (index < numInodes && (ret = getBitmap2(0 /*inode*/, index))) {
+		if (ret < 0) {
+			DEBUG("#ERRO findFileByName: erro ao buscar bitmap\n");
+			return -7;
+		}
+		DWORD setorBitmap = (DWORD)(index * sizeof(struct t2fs_inode)/SECTOR_SIZE) + (superbloco.superblockSize + superbloco.freeBlocksBitmapSize + superbloco.freeInodeBitmapSize) * superbloco.blockSize;
+		DEBUG("Local do inode: %d\n", setorBitmap);
+		read_sector(setorBitmap, buffer);
+		inode = (struct t2fs_inode *)buffer;
+
+		index++;
+	}
+
+	if (closeBitmap2()) {
+		DEBUG("#ERRO findFileByName: erro ao fechar bitmap\n");
+		return -7;
+	}
+
+	
+
+	/**/return 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -327,6 +389,25 @@ static DWORD strToInt(unsigned char* str, int size) {
 		ret += str[i] * (1 << (8 * i));
 
 	return ret;
+}
+
+/*-----------------------------------------------------------------------------
+Função:	calcula Checksum
+
+Entrada:
+		data: ponteiro void* para uma estrutura
+		qty:  quantidade de bytes para calcular
+Retorno: valor do checksum
+-----------------------------------------------------------------------------*/
+static DWORD Checksum(void* data, int qty) {
+
+	DWORD* calcChecksum = (DWORD*)data;
+	unsigned long long int tmpChecksum = 0;
+	for (int i = 0; i < qty; i++)
+		tmpChecksum += calcChecksum[i];
+	DWORD checksum = (DWORD)tmpChecksum + (DWORD)(tmpChecksum >> 32);
+
+	return ~checksum;
 }
 
 /*-----------------------------------------------------------------------------

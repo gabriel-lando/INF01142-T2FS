@@ -37,6 +37,9 @@ void cmdFscp(void);
 void cmdGetCW(void);
 void cmdChangeCW(void);
 
+void cmdMount(void);
+void cmdUmount(void);
+
 
 void cmdExit(void);
 
@@ -80,7 +83,7 @@ char helpDelete[] = "[file]       -> deletes [file] from T2FS";
 char helpSeek[] = "[hdl] [pos]  -> set CP of [hdl] file on [pos]";
 char helpTrunc[] = "[hdl] [siz]  -> truncate file [hdl] to [siz] bytes";
 char helpLn[] = "[lnk] [file] -> create link [lnk] to [file]";
-char helpFormat[] = "[bs]         -> format virtual disk";
+char helpFormat[] = "[part]  [bs] -> format virtual disk";
 
 char helpCopy[] = "[src] [dst]  -> copy files: [src] -> [dst]";
 char helpFscp[] = "[src] [dst]  -> copy files: [src] -> [dst]"
@@ -89,6 +92,10 @@ char helpFscp[] = "[src] [dst]  -> copy files: [src] -> [dst]"
 
 char helpChangeCW[] = "[pathname]   -> change to [pathname]";
 char helpGetCW[] = "             -> shows Current Path";
+
+
+char helpMount[] = "[part]       -> shows Current Path";
+char helpUmount[] = "             -> shows Current Path";
 
 
 struct {
@@ -112,6 +119,9 @@ struct {
 
 	{ "ln", helpLn, cmdLn },
 	{ "format", helpFormat, cmdFormat },
+
+	{ "mount", helpMount, cmdMount },
+	{ "umount", helpUmount, cmdUmount },
 
 	{ "cp", helpCopy, cmdCp },
 	{ "fscp", helpFscp, cmdFscp },
@@ -468,7 +478,7 @@ Informa os comandos aceitos pelo programa de teste
 */
 void cmdMan(void) {
 	int i;
-	char* token = strtok(NULL, " \t");
+	char* token = strtok(NULL, " \t\n");
 
 	// man sem nome de comando
 	if (token == NULL) {
@@ -711,7 +721,7 @@ Retorna HANDLE do arquivo retornado
 void cmdOpen(void) {
 	FILE2 hFile;
 
-	char* token = strtok(NULL, " \t");
+	char* token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -944,6 +954,41 @@ void cmdTrunc(void) {
 
 	// show bytes read
 	printf ("file-handle %d truncated to %d bytes\n", handle, size );*/
+}
+
+/**
+Monta uma particao do disco
+*/
+void cmdMount(void) {
+	char* token = strtok(NULL, " \t\n");
+	if (token == NULL) {
+		printf("Missing parameter\n");
+		return;
+	}
+
+	int partition = -1;
+	if (sscanf(token, "%d", &partition) == 0) {
+		printf("Invalid partition\n");
+		return;
+	}
+
+	int ret = mount(partition);
+	if (ret < 0) {
+		printf("Error: %d\n", ret);
+		return;
+	}
+
+	printf("Partition %d mounted\n", partition);
+}
+
+void cmdUmount(void) {
+	int ret = umount();
+	if (ret < 0) {
+		printf("Error: %d\n", ret);
+		return;
+	}
+
+	printf("Partition unmounted\n");
 }
 
 void cmdSeek(void) {

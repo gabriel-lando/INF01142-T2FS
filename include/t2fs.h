@@ -1,10 +1,22 @@
+/*
+Retornos:
+		 0: Sucesso
+		-1: Parâmetros inválidos
+		-2: Erro na leitura do setor zero do disco
+		-3: Numero da partição inválido
+		-4: Setores por bloco não for divisor da qtde de setores da partição
+		-5: Erro na escrita no disco
+		-6: Checksum invalido
+		-7: Erro em operãcoes com funcoes de bitmap
 
+*/
 
 #ifndef __LIBT2FS___
 #define __LIBT2FS___
 
 #include "t2disk.h"
 #include "apidisk.h"
+#include "bitmap2.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -18,11 +30,11 @@ typedef unsigned int DWORD;
 
 #pragma pack(push, 1)
 
-/** Registro com as informa��es da entrada de diret�rio, lida com readdir2 */
+/** Registro com as informacoes da entrada de diretorio, lida com readdir2 */
 #define MAX_FILE_NAME_SIZE 255
 typedef struct {
 	char    name[MAX_FILE_NAME_SIZE + 1]; /* Nome do arquivo cuja entrada foi lida do disco      */
-	BYTE    fileType;                   /* Tipo do arquivo: regular (0x01) ou diret�rio (0x02) */
+	BYTE    fileType;                   /* Tipo do arquivo: regular (0x01) ou diretorio (0x02) */
 	DWORD   fileSize;                   /* Numero de bytes do arquivo                          */
 } DIRENT2;
 
@@ -30,204 +42,204 @@ typedef struct {
 
 
 /*-----------------------------------------------------------------------------
-Fun��o: Usada para identificar os desenvolvedores do T2FS.
-	Essa fun��o copia um string de identifica��o para o ponteiro indicado por "name".
-	Essa c�pia n�o pode exceder o tamanho do buffer, informado pelo par�metro "size".
-	O string deve ser formado apenas por caracteres ASCII (Valores entre 0x20 e 0x7A) e terminado por �\0�.
-	O string deve conter o nome e n�mero do cart�o dos participantes do grupo.
+Funcao: Usada para identificar os desenvolvedores do T2FS.
+	Essa funcao copia um string de identificacao para o ponteiro indicado por "name".
+	Essa copia nao pode exceder o tamanho do buffer, informado pelo parametro "size".
+	O string deve ser formado apenas por caracteres ASCII (Valores entre 0x20 e 0x7A) e terminado por '\0'.
+	O string deve conter o nome e numero do cartao dos participantes do grupo.
 
-Entra:	name -> buffer onde colocar o string de identifica��o.
-	size -> tamanho do buffer "name" (n�mero m�ximo de bytes a serem copiados).
+Entra:	name -> buffer onde colocar o string de identificacao.
+	size -> tamanho do buffer "name" (numero maximo de bytes a serem copiados).
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-	Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+	Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int identify2(char* name, int size);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Formata uma parti��o do disco virtual.
-		Uma parti��o deve ser montada, antes de poder ser montada para uso.
+Funcao:	Formata uma particao do disco virtual.
+		Uma particao deve ser montada, antes de poder ser montada para uso.
 
-Entra:	partition -> n�mero da parti��o a ser formatada
-		sectors_per_block -> n�mero de setores que formam um bloco, para uso na formata��o da parti��o
+Entra:	partition -> numero da particao a ser formatada
+		sectors_per_block -> numero de setores que formam um bloco, para uso na formatacao da particao
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-		Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+		Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int format2(int partition, int sectors_per_block);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Monta a parti��o indicada por "partition" no diret�rio raiz
+Funcao:	Monta a particao indicada por "partition" no diretorio raiz
 
-Entra:	partition -> n�mero da parti��o a ser montada
+Entra:	partition -> numero da particao a ser montada
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-		Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+		Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int mount(int partition);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Desmonta a parti��o atualmente montada, liberando o ponto de montagem.
+Funcao:	Desmonta a particao atualmente montada, liberando o ponto de montagem.
 
 Entra:	-
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-		Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+		Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int umount(void);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o: Criar um novo arquivo.
-	O nome desse novo arquivo � aquele informado pelo par�metro "filename".
-	O contador de posi��o do arquivo (current pointer) deve ser colocado na posi��o zero.
-	Caso j� exista um arquivo com o mesmo nome, a fun��o dever� retornar um erro de cria��o.
-	A fun��o deve retornar o identificador (handle) do arquivo.
-	Esse handle ser� usado em chamadas posteriores do sistema de arquivo para fins de manipula��o do arquivo criado.
+Funcao: Criar um novo arquivo.
+	O nome desse novo arquivo eh aquele informado pelo parametro "filename".
+	O contador de posicao do arquivo (current pointer) deve ser colocado na posicao zero.
+	Caso ja exista um arquivo com o mesmo nome, a funcao devera retornar um erro de criacao.
+	A funcao deve retornar o identificador (handle) do arquivo.
+	Esse handle sera usado em chamadas posteriores do sistema de arquivo para fins de manipulacao do arquivo criado.
 
 Entra:	filename -> nome do arquivo a ser criado.
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna o handle do arquivo (n�mero positivo).
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna o handle do arquivo (numero positivo).
 	Em caso de erro, deve ser retornado um valor negativo.
 -----------------------------------------------------------------------------*/
 FILE2 create2(char* filename);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Apagar um arquivo do disco.
-	O nome do arquivo a ser apagado � aquele informado pelo par�metro "filename".
+Funcao:	Apagar um arquivo do disco.
+	O nome do arquivo a ser apagado eh aquele informado pelo parametro "filename".
 
 Entra:	filename -> nome do arquivo a ser apagado.
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-	Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+	Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int delete2(char* filename);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Abre um arquivo existente no disco.
-	O nome desse novo arquivo � aquele informado pelo par�metro "filename".
-	Ao abrir um arquivo, o contador de posi��o do arquivo (current pointer) deve ser colocado na posi��o zero.
-	A fun��o deve retornar o identificador (handle) do arquivo.
-	Esse handle ser� usado em chamadas posteriores do sistema de arquivo para fins de manipula��o do arquivo criado.
-	Todos os arquivos abertos por esta chamada s�o abertos em leitura e em escrita.
-	O ponto em que a leitura, ou escrita, ser� realizada � fornecido pelo valor current_pointer (ver fun��o seek2).
+Funcao:	Abre um arquivo existente no disco.
+	O nome desse novo arquivo eh aquele informado pelo parametro "filename".
+	Ao abrir um arquivo, o contador de posicao do arquivo (current pointer) deve ser colocado na posicao zero.
+	A funcao deve retornar o identificador (handle) do arquivo.
+	Esse handle sera usado em chamadas posteriores do sistema de arquivo para fins de manipulacao do arquivo criado.
+	Todos os arquivos abertos por esta chamada sao abertos em leitura e em escrita.
+	O ponto em que a leitura, ou escrita, sera realizada eh fornecido pelo valor current_pointer (ver funcao seek2).
 
 Entra:	filename -> nome do arquivo a ser apagado.
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna o handle do arquivo (n�mero positivo)
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna o handle do arquivo (numero positivo)
 	Em caso de erro, deve ser retornado um valor negativo
 -----------------------------------------------------------------------------*/
 FILE2 open2(char* filename);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Fecha o arquivo identificado pelo par�metro "handle".
+Funcao:	Fecha o arquivo identificado pelo parametro "handle".
 
 Entra:	handle -> identificador do arquivo a ser fechado
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-	Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+	Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int close2(FILE2 handle);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Realiza a leitura de "size" bytes do arquivo identificado por "handle".
-	Os bytes lidos s�o colocados na �rea apontada por "buffer".
-	Ap�s a leitura, o contador de posi��o (current pointer) deve ser ajustado para o byte seguinte ao �ltimo lido.
+Funcao:	Realiza a leitura de "size" bytes do arquivo identificado por "handle".
+	Os bytes lidos sao colocados na area apontada por "buffer".
+	Apos a leitura, o contador de posicao (current pointer) deve ser ajustado para o byte seguinte ao ultimo lido.
 
 Entra:	handle -> identificador do arquivo a ser lido
 	buffer -> buffer onde colocar os bytes lidos do arquivo
-	size -> n�mero de bytes a serem lidos
+	size -> numero de bytes a serem lidos
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna o n�mero de bytes lidos.
-	Se o valor retornado for menor do que "size", ent�o o contador de posi��o atingiu o final do arquivo.
-	Em caso de erro, ser� retornado um valor negativo.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna o numero de bytes lidos.
+	Se o valor retornado for menor do que "size", entao o contador de posicao atingiu o final do arquivo.
+	Em caso de erro, sera retornado um valor negativo.
 -----------------------------------------------------------------------------*/
 int read2(FILE2 handle, char* buffer, int size);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Realiza a escrita de "size" bytes no arquivo identificado por "handle".
-	Os bytes a serem escritos est�o na �rea apontada por "buffer".
-	Ap�s a escrita, o contador de posi��o (current pointer) deve ser ajustado para o byte seguinte ao �ltimo escrito.
+Funcao:	Realiza a escrita de "size" bytes no arquivo identificado por "handle".
+	Os bytes a serem escritos estao na area apontada por "buffer".
+	Apos a escrita, o contador de posicao (current pointer) deve ser ajustado para o byte seguinte ao ultimo escrito.
 
 Entra:	handle -> identificador do arquivo a ser escrito
 	buffer -> buffer de onde pegar os bytes a serem escritos no arquivo
-	size -> n�mero de bytes a serem escritos
+	size -> numero de bytes a serem escritos
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna o n�mero de bytes efetivamente escritos.
-	Em caso de erro, ser� retornado um valor negativo.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna o numero de bytes efetivamente escritos.
+	Em caso de erro, sera retornado um valor negativo.
 -----------------------------------------------------------------------------*/
 int write2(FILE2 handle, char* buffer, int size);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Abre o diret�rio raiz da parti��o ativa.
-		Se a opera��o foi realizada com sucesso,
-		a fun��o deve posicionar o ponteiro de entradas (current entry) na primeira posi��o v�lida do diret�rio.
+Funcao:	Abre o diretorio raiz da particao ativa.
+		Se a operacao foi realizada com sucesso,
+		a funcao deve posicionar o ponteiro de entradas (current entry) na primeira posicao valida do diretorio.
 
 Entra:	-
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-		Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+		Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int opendir2(void);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Realiza a leitura das entradas do diret�rio aberto
-		A cada chamada da fun��o � lida a entrada seguinte do diret�rio
-		Algumas das informa��es dessas entradas devem ser colocadas no par�metro "dentry".
-		Ap�s realizada a leitura de uma entrada, o ponteiro de entradas (current entry) ser� ajustado para a  entrada v�lida seguinte.
-		S�o considerados erros:
-			(a) qualquer situa��o que impe�a a realiza��o da opera��o
-			(b) t�rmino das entradas v�lidas do diret�rio aberto.
+Funcao:	Realiza a leitura das entradas do diretorio aberto
+		A cada chamada da funcao eh lida a entrada seguinte do diretorio
+		Algumas das informacoes dessas entradas devem ser colocadas no parametro "dentry".
+		Apas realizada a leitura de uma entrada, o ponteiro de entradas (current entry) sera ajustado para a  entrada valida seguinte.
+		Sao considerados erros:
+			(a) qualquer situacao que impeca a realizacao da operacao
+			(b) termino das entradas validas do diretorio aberto.
 
-Entra:	dentry -> estrutura de dados onde a fun��o coloca as informa��es da entrada lida.
+Entra:	dentry -> estrutura de dados onde a funcao coloca as informacoes da entrada lida.
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-		Em caso de erro, ser� retornado um valor diferente de zero ( e "dentry" n�o ser� v�lido)
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+		Em caso de erro, sera retornado um valor diferente de zero ( e "dentry" nao sera valido)
 -----------------------------------------------------------------------------*/
 int readdir2(DIRENT2* dentry);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Fecha o diret�rio identificado pelo par�metro "handle".
+Funcao:	Fecha o diretorio identificado pelo parametro "handle".
 
 Entra:	-
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-		Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+		Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int closedir2(void);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Cria um link simb�lico (soft link)
+Funcao:	Cria um link simbolico (soft link)
 
 Entra:	linkname -> nome do link
 		filename -> nome do arquivo apontado pelo link
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-	Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+	Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int sln2(char* linkname, char* filename);
 
 
 /*-----------------------------------------------------------------------------
-Fun��o:	Cria um link estrito (hard link)
+Funcao:	Cria um link estrito (hard link)
 
 Entra:	linkname -> nome do link
 		filename -> nome do arquivo apontado pelo link
 
-Sa�da:	Se a opera��o foi realizada com sucesso, a fun��o retorna "0" (zero).
-	Em caso de erro, ser� retornado um valor diferente de zero.
+Saida:	Se a operacao foi realizada com sucesso, a funcao retorna "0" (zero).
+	Em caso de erro, sera retornado um valor diferente de zero.
 -----------------------------------------------------------------------------*/
 int hln2(char* linkname, char* filename);
 
