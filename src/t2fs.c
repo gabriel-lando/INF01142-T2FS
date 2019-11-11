@@ -58,6 +58,9 @@ static int readInode(int index, struct t2fs_inode* inode, int partition);
 static int readBlockFromInode(int index, struct t2fs_inode inode, int sectors_per_block, unsigned char* buffer);
 static int readDirEntry(int index, struct t2fs_record* record);
 static int findFileByName(char* filename, struct t2fs_record* record);
+static int addBlockOnInode(struct t2fs_inode* inode, int sectors_per_block, DWORD blockID);
+static int createNewFile(char* filename, struct t2fs_record* record, int type);
+static int writeDirEntry(struct t2fs_record record);
 
 
 /*-----------------------------------------------------------------------------
@@ -213,18 +216,28 @@ FILE2 create2(char* filename) {
 		return -11;
 	}
 
+	if (filename[strlen(filename) - 1] == '\n') {
+		filename[strlen(filename) - 1] =  '\0';
+	}
+
 	struct t2fs_record record;
 	int ret = 0;
-	if ((ret = findFileByName(filename, &record))) {
-		if (ret != -10) {
-			DEBUG("#ERRO create2: erro ao encontrar arquivo (%d)\n", ret);
+	if ((ret = findFileByName(filename, &record)) == 0) {
+		// criar novo arquivo
+		if ((ret = createNewFile(filename, &record, 1))) {
+			DEBUG("#ERRO create2: erro ao criar novo arquivo (%d)\n", ret);
 			return ret;
 		}
-		// criar novo arquivo
+	}
+	else if (ret < 0) {
+		DEBUG("#ERRO create2: erro ao encontrar arquivo (%d)\n", ret);
+		return ret;
 	}
 	else {
 		//limpar arquivo
+		return -1;
 	}
+	
 	
 	return 0;
 }
@@ -329,11 +342,9 @@ static int createNewFile(char* filename, struct t2fs_record* record, int type) {
 		return indexInode;
 	}
 	
-	record = struct t2fs_record {
-		.TypeVal = type,
-		.name = filename,
-		.inodeNumber = indexInode;
-	};
+	record->TypeVal = type;
+	record->inodeNumber = indexInode;
+	strcpy(record->name, filename);
 
 	struct t2fs_inode newInode = {
 		.blocksFileSize = 0,
@@ -348,7 +359,10 @@ static int createNewFile(char* filename, struct t2fs_record* record, int type) {
 	if ((ret = writeInode(indexInode, newInode, partitionMounted)))
 		return ret;
 
-	int ret = 0;
+	if ((ret = writeDirEntry(*record)))
+		return ret;
+
+
 	struct t2fs_superbloco superbloco;
 	if ((ret = readSuperblock(partitionMounted, &superbloco))) {
 		DEBUG("#ERRO findFileByName: erro na leitura do superbloco\n");
@@ -356,7 +370,7 @@ static int createNewFile(char* filename, struct t2fs_record* record, int type) {
 	}
 
 	//DEBUG("#ERRO findFileByName: arquivo nao encontrado\n");
-	return -10;
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -364,7 +378,7 @@ Funcao:	Encontra um arquivo no disco
 
 Retorno:
 		 #: Identificador do arquivo
-		-3: Numero da particao invalido
+		 0: Sucesso - Arquivo nao encontrado
 -----------------------------------------------------------------------------*/
 static int findFileByName(char* filename, struct t2fs_record* record) {
 	if (partitionMounted == -1) {
@@ -387,15 +401,20 @@ static int findFileByName(char* filename, struct t2fs_record* record) {
 
 	DWORD qtyFiles = inode.bytesFileSize / sizeof(struct t2fs_record);
 
+	DEBUG("#INFO findFileByName: qtyFiles: %u  bytesFileSize: %u\n", qtyFiles, inode.bytesFileSize);
+
 	for (DWORD i = 0; i < qtyFiles; i++) {
-		if ((ret = readDirEntry(i, record)))
+		if ((ret = readDirEntry(i, record)) < 0)
 			return ret;
+		
+		DEBUG("#INFO findFileByName: %s\n", record->name);
+
 		if (!strcmp(filename, record->name))
-			return 0;
+			return i;
 	}
 
 	//DEBUG("#ERRO findFileByName: arquivo nao encontrado\n");
-	return -10;
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -431,11 +450,15 @@ static int readDirEntry(int index, struct t2fs_record* record) {
 	int indexBlock = index * sizeof(struct t2fs_record) / (SECTOR_SIZE * superbloco.blockSize);
 	int offsetBlock = index % ((SECTOR_SIZE * superbloco.blockSize) / sizeof(struct t2fs_record));
 
-	unsigned char buffer[SECTOR_SIZE * superbloco.blockSize];
+	DEBUG("#INFO readDirEntry: indexBlock: %u  offsetBlock: %u\n", indexBlock, offsetBlock);
+
+	unsigned char* buffer = (unsigned char*)malloc(SECTOR_SIZE * superbloco.blockSize);
 	readBlockFromInode(indexBlock, inode, superbloco.blockSize, buffer);
 	
 	struct t2fs_record* pRecord = (struct t2fs_record*)buffer;
 	*record = pRecord[offsetBlock];
+
+	DEBUG("#INFO readDirEntry: %s\n", record->name);
 
 	return 0;
 }
@@ -465,7 +488,9 @@ static int writeDirEntry(struct t2fs_record record) {
 		return ret;
 	}
 
-	if (!(inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize))) {
+	DEBUG("bytesFileSize: %u  %u\n", inode.bytesFileSize, inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize);
+
+	if (!inode.blocksFileSize || !(inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize))) {
 		// Alocar novo bloco
 		int indexBlk = allocBlockOrInode(1, partitionMounted);
 		if (indexBlk < 0) {
@@ -473,26 +498,32 @@ static int writeDirEntry(struct t2fs_record record) {
 			return indexBlk;
 		}
 		
-
-		inode.blocksFileSize++;
+		if ((ret = addBlockOnInode(&inode, superbloco.blockSize, indexBlk))) {
+			DEBUG("#ERRO writeDirEntry: erro ao adicionar bloco no inode\n");
+			return ret;
+		}
 	}
 
-	indiceDir = (inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize)))
+	DWORD indiceDir = (inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize)) / sizeof(struct t2fs_record);
 
-
-	/*if (((index + 1) * sizeof(struct t2fs_record)) > (inode.bytesFileSize)) {
-		DEBUG("#ERRO writeDirEntry: indice nao se encontra na entrada de diretorio\n");
-		return -8;
+	unsigned char* buffer = (unsigned char*)malloc(SECTOR_SIZE * superbloco.blockSize);
+	if ((ret = readBlockFromInode(inode.blocksFileSize - 1, inode, superbloco.blockSize, buffer)) < 0) {
+		DEBUG("#ERRO writeDirEntry: erro ao ler bloco do inode\n");
+		return ret;
 	}
+	struct t2fs_record* tmpArray = (struct t2fs_record*)buffer;
+	tmpArray[indiceDir] = record;
+	inode.bytesFileSize += sizeof(struct t2fs_record);
 
-	int indexBlock = index * sizeof(struct t2fs_record) / (SECTOR_SIZE * superbloco.blockSize);
-	int offsetBlock = index % ((SECTOR_SIZE * superbloco.blockSize) / sizeof(struct t2fs_record));
+	DEBUG("#INFO writeDirEntry: indiceDir: %u  sector to write: %u\n", indiceDir, ret);
 
-	unsigned char buffer[SECTOR_SIZE * superbloco.blockSize];
-	readBlockFromInode(indexBlock, inode, superbloco.blockSize, buffer);
+	for (int i = 0; i < superbloco.blockSize; i++)
+		write_sector(ret + i, &buffer[i * SECTOR_SIZE]);
 
-	struct t2fs_record* pRecord = (struct t2fs_record*)buffer;
-	*record = pRecord[offsetBlock];*/
+	if ((ret = writeInode(0, inode, partitionMounted))) {
+		DEBUG("#ERRO writeDirEntry: erro na gravacao do inode 0\n");
+		return ret;
+	}
 
 	return 0;
 }
@@ -507,31 +538,40 @@ Entrada:
 		buffer: ponteiro para o buffer que irá receber os dados, deve ser sectors_per_block * SECTOR_SIZE
 
 Retorno:
-		 0: Sucesso
+		 #: Endereço do bloco lido
 -----------------------------------------------------------------------------*/
 static int readBlockFromInode(int index, struct t2fs_inode inode, int sectors_per_block, unsigned char* buffer) {
 	unsigned long long int maxIndirSimples = sectors_per_block * SECTOR_SIZE / sizeof(DWORD);
 
-	if (index < 2)
+	if (index >= inode.blocksFileSize || index < 0) {
+		DEBUG("#ERRO readBlockFromInode: inode nao contem esse indice\n");
+		return -9;
+	}
+
+	if (index < 2) {
 		for (int i = 0; i < sectors_per_block; i++)
 			read_sector(inode.dataPtr[index] + i, &buffer[i * SECTOR_SIZE]);
+		return inode.dataPtr[index];
+	}
 	else if ((index - 2) < maxIndirSimples) {
 		index -= 2;
 
-		unsigned char indSimp[SECTOR_SIZE * sectors_per_block];
+		unsigned char* indSimp = (unsigned char*)malloc(SECTOR_SIZE * sectors_per_block);
 		for (int i = 0; i < sectors_per_block; i++)
 			read_sector(inode.singleIndPtr + i, &indSimp[i * SECTOR_SIZE]);
 
 		DWORD* pIndirSimples = (DWORD*)indSimp;
 		for (int i = 0; i < sectors_per_block; i++)
 			read_sector(pIndirSimples[index] + i, &buffer[i * SECTOR_SIZE]);
+
+		return pIndirSimples[index];
 	}
 	else if ((index - maxIndirSimples - 2) < (maxIndirSimples * maxIndirSimples)) {
 		index -= (2 + maxIndirSimples);
 		DWORD indexIndir1 = index / maxIndirSimples;
 		DWORD indexIndir2 = index % maxIndirSimples;
 
-		unsigned char indDupla[SECTOR_SIZE * sectors_per_block];
+		unsigned char* indDupla = (unsigned char*)malloc(SECTOR_SIZE * sectors_per_block);
 		for (int i = 0; i < sectors_per_block; i++)
 			read_sector(inode.doubleIndPtr + i, &indDupla[i * SECTOR_SIZE]);
 		DWORD* pIndirDupla = (DWORD*)indDupla;
@@ -544,6 +584,8 @@ static int readBlockFromInode(int index, struct t2fs_inode inode, int sectors_pe
 		indDupla1 = pIndirDupla[indexIndir2];
 		for (int i = 0; i < sectors_per_block; i++)
 			read_sector(indDupla1 + i, &buffer[i * SECTOR_SIZE]);
+
+		return indDupla1;
 	}
 	else {
 		DEBUG("#ERRO readBlockFromInode: indice invalido para esse inode\n");
@@ -581,13 +623,13 @@ static int addBlockOnInode(struct t2fs_inode *inode, int sectors_per_block, DWOR
 			inode->singleIndPtr = indexBlk;
 		}
 
-		DWORD* pIndirSimples = (DWORD*)indSimp;
+		unsigned char* buffer = (unsigned char*)malloc(SECTOR_SIZE * sectors_per_block);
 		for (int i = 0; i < sectors_per_block; i++)
-			read_sector(pIndirSimples[index] + i, &buffer[i * SECTOR_SIZE]);
-		DWORD* pIndirSimples = (DWORD*)indSimp;
+			read_sector(inode->singleIndPtr + i, &buffer[i * SECTOR_SIZE]);
+		DWORD* pIndirSimples = (DWORD*)buffer;
 		pIndirSimples[index] = blockID;
 		for (int i = 0; i < sectors_per_block; i++)
-			write_sector(pIndirSimples[index] + i, &buffer[i * SECTOR_SIZE]);
+			write_sector(inode->singleIndPtr + i, &buffer[i * SECTOR_SIZE]);
 	}
 	else if ((index - maxIndirSimples - 2) < (maxIndirSimples * maxIndirSimples)) {
 		index -= (2 + maxIndirSimples);
@@ -604,24 +646,38 @@ static int addBlockOnInode(struct t2fs_inode *inode, int sectors_per_block, DWOR
 		DWORD indexIndir1 = index / maxIndirSimples;
 		DWORD indexIndir2 = index % maxIndirSimples;
 
-		unsigned char indDupla[SECTOR_SIZE * sectors_per_block];
+		unsigned char* buffer = (unsigned char*)malloc(SECTOR_SIZE * sectors_per_block);
 		for (int i = 0; i < sectors_per_block; i++)
-			read_sector(inode.doubleIndPtr + i, &indDupla[i * SECTOR_SIZE]);
-		DWORD* pIndirDupla = (DWORD*)indDupla;
-		DWORD indDupla1 = pIndirDupla[indexIndir1];
+			read_sector(inode->doubleIndPtr + i, &buffer[i * SECTOR_SIZE]);
+
+		DWORD* pIndirDupla1 = (DWORD*)buffer;
+		if (pIndirDupla1[indexIndir1] == 0) {
+			DWORD indexBlk = allocBlockOrInode(1, partitionMounted);
+			if (indexBlk < 0) {
+				DEBUG("#ERRO addBlockOnInode: erro ao alocar novo bloco\n");
+				return indexBlk;
+			}
+
+			DEBUG("#INFO addBlockOnInode: indexBlk = %u\n", indexBlk);
+
+			pIndirDupla1[indexIndir1] = indexBlk;
+			for (int i = 0; i < sectors_per_block; i++)
+				write_sector(inode->doubleIndPtr + i, &buffer[i * SECTOR_SIZE]);
+		}
 
 		for (int i = 0; i < sectors_per_block; i++)
-			read_sector(indDupla1 + i, &indDupla[i * SECTOR_SIZE]);
-
-		pIndirDupla = (DWORD*)indDupla;
-		indDupla1 = pIndirDupla[indexIndir2];
+			read_sector(pIndirDupla1[indexIndir1] + i, &buffer[i * SECTOR_SIZE]);
+		DWORD* pIndirDupla2 = (DWORD*)buffer;
+		pIndirDupla2[indexIndir2] = blockID;
 		for (int i = 0; i < sectors_per_block; i++)
-			read_sector(indDupla1 + i, &buffer[i * SECTOR_SIZE]);
+			write_sector(pIndirDupla1[indexIndir1] + i, &buffer[i * SECTOR_SIZE]);
 	}
 	else {
 		DEBUG("#ERRO addBlockOnInode: inode excede o limite de blocos\n");
 		return -12;
 	}
+
+	inode->blocksFileSize++;
 
 	return 0;
 }
@@ -646,33 +702,28 @@ static int allocBlockOrInode(int isBlock, int partition) {
 		return -7;
 	}
 
-	//getBitmap2(int handle, int bitNumber)
-	unsigned char buffer[SECTOR_SIZE];
-	read_sector(setor_inicial, buffer);
-
+	int ret = 0;
 	struct t2fs_superbloco superbloco;
-	memcpy(&superbloco, buffer, sizeof(struct t2fs_superbloco));
+	if ((ret = readSuperblock(partition, &superbloco)))
+		return ret;
 
-	int numMax = 0;
+	DWORD numMax = 0;
 
 	if(isBlock)
 		numMax = superbloco.diskSize - (superbloco.superblockSize + superbloco.freeBlocksBitmapSize + superbloco.freeInodeBitmapSize + superbloco.inodeAreaSize);
 	else
 		numMax = superbloco.inodeAreaSize * superbloco.blockSize * (SECTOR_SIZE / sizeof(struct t2fs_inode));
 
-	DEBUG("#DEBUG allocBlockOrInode: Qtde: %d\n", numMax);
-
 	int index = 0;
-	int ret = 0;
 
 	while (index < numMax && (ret = getBitmap2(isBlock, index++)) == 1);
 
-	if (index-- >= numMax || ret != 0) {
+	if (index >= numMax || ret != 0) {
 		DEBUG("#ERRO allocBlockOrInode: erro ao buscar bitmap\n");
 		return -7;
 	}
 
-	if (setBitmap2(isBlock, index, 1)) {
+	if (setBitmap2(isBlock, --index, 1)) {
 		DEBUG("#ERRO allocBlockOrInode: erro ao alterar bitmap\n");
 		return -7;
 	}
@@ -680,6 +731,18 @@ static int allocBlockOrInode(int isBlock, int partition) {
 	if (closeBitmap2()) {
 		DEBUG("#ERRO allocBlockOrInode: erro ao fechar bitmap\n");
 		return -7;
+	}
+
+	// Se for um bloco, limpar o conteudo dele
+	if (isBlock) {
+		index += superbloco.superblockSize + superbloco.freeBlocksBitmapSize + superbloco.freeInodeBitmapSize + superbloco.inodeAreaSize;
+
+		DWORD writeIndex = setor_inicial + index * superbloco.blockSize;
+
+		unsigned char* buffer = (unsigned char*)calloc(SECTOR_SIZE * superbloco.blockSize, sizeof(unsigned char));
+		for (int i = 0; i < superbloco.blockSize; i++)
+			write_sector(writeIndex + i, &buffer[i * SECTOR_SIZE]);
+		free(buffer);
 	}
 	
 	return index;
@@ -696,13 +759,16 @@ static int readInode(int index, struct t2fs_inode *inode, int partition) {
 	if ((ret = readSuperblock(partition, &superbloco)))
 		return ret;
 
-	int sectorToRead = (superbloco.superblockSize + superbloco.freeBlocksBitmapSize + superbloco.freeInodeBitmapSize) * superbloco.blockSize + (index * sizeof(struct t2fs_inode) / SECTOR_SIZE);
+	DWORD setor_inicial = 0;
+	partitionSectors(partition, &setor_inicial, NULL);
+
+	DWORD sectorToRead = (superbloco.superblockSize + superbloco.freeBlocksBitmapSize + superbloco.freeInodeBitmapSize) * superbloco.blockSize + (index * sizeof(struct t2fs_inode) / SECTOR_SIZE);
 
 	unsigned char buffer[SECTOR_SIZE];
-	read_sector(sectorToRead, buffer);
+	read_sector(setor_inicial + sectorToRead, buffer);
 
 	struct t2fs_inode* inodePointer = (struct t2fs_inode*)buffer;
-	*inode = inodePointer[sectorToRead % SECTOR_SIZE];
+	*inode = inodePointer[index % (SECTOR_SIZE / sizeof(struct t2fs_inode))];
 
 	return 0;
 }
@@ -718,15 +784,18 @@ static int writeInode(int index, struct t2fs_inode inode, int partition) {
 	if ((ret = readSuperblock(partition, &superbloco)))
 		return ret;
 
+	DWORD setor_inicial = 0;
+	partitionSectors(partition, &setor_inicial, NULL);
+
 	int sectorToWrite = (superbloco.superblockSize + superbloco.freeBlocksBitmapSize + superbloco.freeInodeBitmapSize) * superbloco.blockSize + (index * sizeof(struct t2fs_inode) / SECTOR_SIZE);
 
 	unsigned char buffer[SECTOR_SIZE];
-	read_sector(sectorToWrite, buffer);
+	read_sector(setor_inicial + sectorToWrite, buffer);
 
 	struct t2fs_inode* inodePointer = (struct t2fs_inode*)buffer;
-	inodePointer[sectorToWrite % SECTOR_SIZE] = inode;
+	inodePointer[index % (SECTOR_SIZE / sizeof(struct t2fs_inode))] = inode;
 
-	write_sector(sectorToWrite, buffer);
+	write_sector(setor_inicial + sectorToWrite, buffer);
 
 	return 0;
 }
@@ -769,7 +838,7 @@ static void partitionSectors(int partition, DWORD* setor_inicial, DWORD* setor_f
 
 	int byte_inicial = strToInt(&buffer[4], 2) + 32 * partition;
 
-	if(setor_inicial)
+	if (setor_inicial)
 		*setor_inicial = strToInt(&buffer[byte_inicial], 4);
 
 	if (setor_final)
