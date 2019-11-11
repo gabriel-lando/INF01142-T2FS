@@ -8,6 +8,11 @@ Retornos:
 		-5: Erro na escrita no disco
 		-6: Checksum invalido
 		-7: Erro em operacoes com funcoes de bitmap
+		-8: Entrada nao existe no registro de entradas de diretorio
+		-9: Bloco nao existe no inode
+		-10: Arquivo não encontrado
+		-11: Filename muito longo
+		-12: Inode excedeu o limite de blocos
 */
 
 #ifndef __LIBT2FS___

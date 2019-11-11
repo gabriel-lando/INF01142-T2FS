@@ -25,7 +25,8 @@ Alunos:
 /*-----------------------------------------------------------------------------
 Variaveis globais
 -----------------------------------------------------------------------------*/
-#define MAX_OPENED_FILES 10
+#define MAX_OPENED_FILES	10
+#define MAX_FILENAME		50
 
 int partitionMounted = -1;
 FILE2 openedFiles[MAX_OPENED_FILES] = { 0 };
@@ -53,7 +54,10 @@ static void partitionSectors(int partition, DWORD* setor_inicial, DWORD* setor_f
 static int allocBlockOrInode(int isBlock, int partition);
 static int readSuperblock(int partition, struct t2fs_superbloco* superbloco);
 static int writeInode(int index, struct t2fs_inode inode, int partition);
-
+static int readInode(int index, struct t2fs_inode* inode, int partition);
+static int readBlockFromInode(int index, struct t2fs_inode inode, int sectors_per_block, unsigned char* buffer);
+static int readDirEntry(int index, struct t2fs_record* record);
+static int findFileByName(char* filename, struct t2fs_record* record);
 
 
 /*-----------------------------------------------------------------------------
@@ -199,11 +203,30 @@ Funcao:	Funcao usada para criar um novo arquivo no disco e abri-lo,
 		No entanto, diferentemente da open2, se filename referenciar um
 		arquivo ja existente, o mesmo tera seu conteudo removido e
 		assumira um tamanho de zero bytes.
+
+Retorno:
+		-11: Filename muito longo
 -----------------------------------------------------------------------------*/
 FILE2 create2(char* filename) {
-	//findFileByName(filename);
+	if(strlen(filename) > MAX_FILENAME) {
+		DEBUG("#ERRO create2: filename muito longo\n");
+		return -11;
+	}
+
+	struct t2fs_record record;
+	int ret = 0;
+	if ((ret = findFileByName(filename, &record))) {
+		if (ret != -10) {
+			DEBUG("#ERRO create2: erro ao encontrar arquivo (%d)\n", ret);
+			return ret;
+		}
+		// criar novo arquivo
+	}
+	else {
+		//limpar arquivo
+	}
 	
-	return -1;
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -287,65 +310,321 @@ Funcao extras essenciais para o funcionamento do programa
 
 
 /*-----------------------------------------------------------------------------
+Funcao:	Cria um novo arquivo e retorna a struct dele
+
+Retorno:
+		 #: Identificador do arquivo
+		-3: Numero da particao invalido
+-----------------------------------------------------------------------------*/
+static int createNewFile(char* filename, struct t2fs_record* record, int type) {
+
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO createNewFile: particao nao montada\n");
+		return -3;
+	}
+
+	int indexInode = allocBlockOrInode(0, partitionMounted);
+	if(indexInode < 0) {
+		DEBUG("#ERRO createNewFile: erro no inode\n");
+		return indexInode;
+	}
+	
+	record = struct t2fs_record {
+		.TypeVal = type,
+		.name = filename,
+		.inodeNumber = indexInode;
+	};
+
+	struct t2fs_inode newInode = {
+		.blocksFileSize = 0,
+		.bytesFileSize = 0,
+		.dataPtr = { 0 },
+		.singleIndPtr = 0,
+		.doubleIndPtr = 0,
+		.RefCounter = 0
+	};
+
+	int ret = 0;
+	if ((ret = writeInode(indexInode, newInode, partitionMounted)))
+		return ret;
+
+	int ret = 0;
+	struct t2fs_superbloco superbloco;
+	if ((ret = readSuperblock(partitionMounted, &superbloco))) {
+		DEBUG("#ERRO findFileByName: erro na leitura do superbloco\n");
+		return ret;
+	}
+
+	//DEBUG("#ERRO findFileByName: arquivo nao encontrado\n");
+	return -10;
+}
+
+/*-----------------------------------------------------------------------------
 Funcao:	Encontra um arquivo no disco
 
 Retorno:
 		 #: Identificador do arquivo
 		-3: Numero da particao invalido
-		-7: Erro ao abrir ou fechar bitmap
 -----------------------------------------------------------------------------*/
-static FILE2 findFileByName(char* filename) {
+static int findFileByName(char* filename, struct t2fs_record* record) {
 	if (partitionMounted == -1) {
 		DEBUG("#ERRO findFileByName: particao nao montada\n");
 		return -3;
 	}
 
-	DWORD setor_inicial = 0;
-	partitionSectors(partitionMounted, &setor_inicial, NULL);
-
-	if (openBitmap2(setor_inicial)) {
-		DEBUG("#ERRO findFileByName: erro ao abrir bitmap\n");
-		return -7;
-	}
-
-	//getBitmap2(int handle, int bitNumber)
-	unsigned char buffer[SECTOR_SIZE];
-	read_sector(setor_inicial, buffer);
-
-	struct t2fs_superbloco superbloco;
-	memcpy(&superbloco, buffer, sizeof(struct t2fs_superbloco));
-
-	int numInodes = superbloco.inodeAreaSize * superbloco.blockSize * (SECTOR_SIZE / sizeof(struct t2fs_inode));
-
-	DEBUG("Qtde inodes: %d\n", numInodes);
-
-	int index = 0;
 	int ret = 0;
-	struct t2fs_inode *inode;
-
-	while (index < numInodes && (ret = getBitmap2(0 /*inode*/, index))) {
-		if (ret < 0) {
-			DEBUG("#ERRO findFileByName: erro ao buscar bitmap\n");
-			return -7;
-		}
-		DWORD setorBitmap = (DWORD)(index * sizeof(struct t2fs_inode)/SECTOR_SIZE) + (superbloco.superblockSize + superbloco.freeBlocksBitmapSize + superbloco.freeInodeBitmapSize) * superbloco.blockSize;
-		DEBUG("Local do inode: %d\n", setorBitmap);
-		read_sector(setorBitmap, buffer);
-		inode = (struct t2fs_inode *)buffer;
-
-		index++;
+	struct t2fs_superbloco superbloco;
+	if ((ret = readSuperblock(partitionMounted, &superbloco))) {
+		DEBUG("#ERRO findFileByName: erro na leitura do superbloco\n");
+		return ret;
 	}
 
-	if (closeBitmap2()) {
-		DEBUG("#ERRO findFileByName: erro ao fechar bitmap\n");
-		return -7;
+	struct t2fs_inode inode;
+	if ((ret = readInode(0, &inode, partitionMounted))) {
+		DEBUG("#ERRO findFileByName: erro na leitura do inode 0\n");
+		return ret;
 	}
 
-	
+	DWORD qtyFiles = inode.bytesFileSize / sizeof(struct t2fs_record);
 
-	/**/return 0;
+	for (DWORD i = 0; i < qtyFiles; i++) {
+		if ((ret = readDirEntry(i, record)))
+			return ret;
+		if (!strcmp(filename, record->name))
+			return 0;
+	}
+
+	//DEBUG("#ERRO findFileByName: arquivo nao encontrado\n");
+	return -10;
 }
 
+/*-----------------------------------------------------------------------------
+Funcao:	Encontra um arquivo no disco
+
+Retorno:
+		 0: Sucesso
+-----------------------------------------------------------------------------*/
+static int readDirEntry(int index, struct t2fs_record* record) {
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO readDirEntry: particao nao montada\n");
+		return -3;
+	}
+
+	int ret = 0;
+	struct t2fs_superbloco superbloco;
+	if ((ret = readSuperblock(partitionMounted, &superbloco))) {
+		DEBUG("#ERRO readDirEntry: erro na leitura do superbloco\n");
+		return ret;
+	}
+
+	struct t2fs_inode inode;
+	if ((ret = readInode(0, &inode, partitionMounted))) {
+		DEBUG("#ERRO readDirEntry: erro na leitura do inode 0\n");
+		return ret;
+	}
+	 
+	if (((index + 1) * sizeof(struct t2fs_record)) > (inode.bytesFileSize)) {
+		DEBUG("#ERRO readDirEntry: indice nao se encontra na entrada de diretorio\n");
+		return -8;
+	}
+
+	int indexBlock = index * sizeof(struct t2fs_record) / (SECTOR_SIZE * superbloco.blockSize);
+	int offsetBlock = index % ((SECTOR_SIZE * superbloco.blockSize) / sizeof(struct t2fs_record));
+
+	unsigned char buffer[SECTOR_SIZE * superbloco.blockSize];
+	readBlockFromInode(indexBlock, inode, superbloco.blockSize, buffer);
+	
+	struct t2fs_record* pRecord = (struct t2fs_record*)buffer;
+	*record = pRecord[offsetBlock];
+
+	return 0;
+}
+
+/*-----------------------------------------------------------------------------
+Funcao:	Escreve um novo arquivo no disco
+
+Retorno:
+		 0: Sucesso
+-----------------------------------------------------------------------------*/
+static int writeDirEntry(struct t2fs_record record) {
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO writeDirEntry: particao nao montada\n");
+		return -3;
+	}
+
+	int ret = 0;
+	struct t2fs_superbloco superbloco;
+	if ((ret = readSuperblock(partitionMounted, &superbloco))) {
+		DEBUG("#ERRO writeDirEntry: erro na leitura do superbloco\n");
+		return ret;
+	}
+
+	struct t2fs_inode inode;
+	if ((ret = readInode(0, &inode, partitionMounted))) {
+		DEBUG("#ERRO writeDirEntry: erro na leitura do inode 0\n");
+		return ret;
+	}
+
+	if (!(inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize))) {
+		// Alocar novo bloco
+		int indexBlk = allocBlockOrInode(1, partitionMounted);
+		if (indexBlk < 0) {
+			DEBUG("#ERRO writeDirEntry: erro ao alocar novo bloco\n");
+			return indexBlk;
+		}
+		
+
+		inode.blocksFileSize++;
+	}
+
+	indiceDir = (inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize)))
+
+
+	/*if (((index + 1) * sizeof(struct t2fs_record)) > (inode.bytesFileSize)) {
+		DEBUG("#ERRO writeDirEntry: indice nao se encontra na entrada de diretorio\n");
+		return -8;
+	}
+
+	int indexBlock = index * sizeof(struct t2fs_record) / (SECTOR_SIZE * superbloco.blockSize);
+	int offsetBlock = index % ((SECTOR_SIZE * superbloco.blockSize) / sizeof(struct t2fs_record));
+
+	unsigned char buffer[SECTOR_SIZE * superbloco.blockSize];
+	readBlockFromInode(indexBlock, inode, superbloco.blockSize, buffer);
+
+	struct t2fs_record* pRecord = (struct t2fs_record*)buffer;
+	*record = pRecord[offsetBlock];*/
+
+	return 0;
+}
+
+
+/*-----------------------------------------------------------------------------
+Funcao:	Retorna um block do disco apontado pelo inode
+Entrada:
+		index: indice do bloco a ser lido
+		inode: inode que aponta para os blocos
+		sectors_per_block: valor de superbloco.blockSize
+		buffer: ponteiro para o buffer que irá receber os dados, deve ser sectors_per_block * SECTOR_SIZE
+
+Retorno:
+		 0: Sucesso
+-----------------------------------------------------------------------------*/
+static int readBlockFromInode(int index, struct t2fs_inode inode, int sectors_per_block, unsigned char* buffer) {
+	unsigned long long int maxIndirSimples = sectors_per_block * SECTOR_SIZE / sizeof(DWORD);
+
+	if (index < 2)
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(inode.dataPtr[index] + i, &buffer[i * SECTOR_SIZE]);
+	else if ((index - 2) < maxIndirSimples) {
+		index -= 2;
+
+		unsigned char indSimp[SECTOR_SIZE * sectors_per_block];
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(inode.singleIndPtr + i, &indSimp[i * SECTOR_SIZE]);
+
+		DWORD* pIndirSimples = (DWORD*)indSimp;
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(pIndirSimples[index] + i, &buffer[i * SECTOR_SIZE]);
+	}
+	else if ((index - maxIndirSimples - 2) < (maxIndirSimples * maxIndirSimples)) {
+		index -= (2 + maxIndirSimples);
+		DWORD indexIndir1 = index / maxIndirSimples;
+		DWORD indexIndir2 = index % maxIndirSimples;
+
+		unsigned char indDupla[SECTOR_SIZE * sectors_per_block];
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(inode.doubleIndPtr + i, &indDupla[i * SECTOR_SIZE]);
+		DWORD* pIndirDupla = (DWORD*)indDupla;
+		DWORD indDupla1 = pIndirDupla[indexIndir1];
+		
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(indDupla1 + i, &indDupla[i * SECTOR_SIZE]);
+
+		pIndirDupla = (DWORD*)indDupla;
+		indDupla1 = pIndirDupla[indexIndir2];
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(indDupla1 + i, &buffer[i * SECTOR_SIZE]);
+	}
+	else {
+		DEBUG("#ERRO readBlockFromInode: indice invalido para esse inode\n");
+		return -9;
+	}
+
+	return 0;
+}
+
+/*-----------------------------------------------------------------------------
+Funcao:	Adiciona um bloco de dados no inode
+Entrada:
+		inode: inode que aponta para os blocos
+		sectors_per_block: valor de superbloco.blockSize
+
+Retorno:
+		 0: Sucesso
+-----------------------------------------------------------------------------*/
+static int addBlockOnInode(struct t2fs_inode *inode, int sectors_per_block, DWORD blockID) {
+	unsigned long long int maxIndirSimples = sectors_per_block * SECTOR_SIZE / sizeof(DWORD);
+
+	DWORD index = inode->blocksFileSize;
+
+	if (index < 2)
+		inode->dataPtr[index] = blockID;
+	else if ((index - 2) < maxIndirSimples) {
+		index -= 2;
+
+		if (inode->singleIndPtr == 0) {
+			DWORD indexBlk = allocBlockOrInode(1, partitionMounted);
+			if (indexBlk < 0) {
+				DEBUG("#ERRO addBlockOnInode: erro ao alocar novo bloco\n");
+				return indexBlk;
+			}
+			inode->singleIndPtr = indexBlk;
+		}
+
+		DWORD* pIndirSimples = (DWORD*)indSimp;
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(pIndirSimples[index] + i, &buffer[i * SECTOR_SIZE]);
+		DWORD* pIndirSimples = (DWORD*)indSimp;
+		pIndirSimples[index] = blockID;
+		for (int i = 0; i < sectors_per_block; i++)
+			write_sector(pIndirSimples[index] + i, &buffer[i * SECTOR_SIZE]);
+	}
+	else if ((index - maxIndirSimples - 2) < (maxIndirSimples * maxIndirSimples)) {
+		index -= (2 + maxIndirSimples);
+
+		if (inode->doubleIndPtr == 0) {
+			DWORD indexBlk = allocBlockOrInode(1, partitionMounted);
+			if (indexBlk < 0) {
+				DEBUG("#ERRO addBlockOnInode: erro ao alocar novo bloco\n");
+				return indexBlk;
+			}
+			inode->doubleIndPtr = indexBlk;
+		}
+
+		DWORD indexIndir1 = index / maxIndirSimples;
+		DWORD indexIndir2 = index % maxIndirSimples;
+
+		unsigned char indDupla[SECTOR_SIZE * sectors_per_block];
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(inode.doubleIndPtr + i, &indDupla[i * SECTOR_SIZE]);
+		DWORD* pIndirDupla = (DWORD*)indDupla;
+		DWORD indDupla1 = pIndirDupla[indexIndir1];
+
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(indDupla1 + i, &indDupla[i * SECTOR_SIZE]);
+
+		pIndirDupla = (DWORD*)indDupla;
+		indDupla1 = pIndirDupla[indexIndir2];
+		for (int i = 0; i < sectors_per_block; i++)
+			read_sector(indDupla1 + i, &buffer[i * SECTOR_SIZE]);
+	}
+	else {
+		DEBUG("#ERRO addBlockOnInode: inode excede o limite de blocos\n");
+		return -12;
+	}
+
+	return 0;
+}
 
 /*-----------------------------------------------------------------------------
 Funcao:	Aloca um bloco ou inode e retorna o indice dele
@@ -404,6 +683,28 @@ static int allocBlockOrInode(int isBlock, int partition) {
 	}
 	
 	return index;
+}
+
+/*-----------------------------------------------------------------------------
+Funcao:	Le um inode na area reservada para inodes
+-----------------------------------------------------------------------------*/
+static int readInode(int index, struct t2fs_inode *inode, int partition) {
+
+	struct t2fs_superbloco superbloco;
+
+	int ret;
+	if ((ret = readSuperblock(partition, &superbloco)))
+		return ret;
+
+	int sectorToRead = (superbloco.superblockSize + superbloco.freeBlocksBitmapSize + superbloco.freeInodeBitmapSize) * superbloco.blockSize + (index * sizeof(struct t2fs_inode) / SECTOR_SIZE);
+
+	unsigned char buffer[SECTOR_SIZE];
+	read_sector(sectorToRead, buffer);
+
+	struct t2fs_inode* inodePointer = (struct t2fs_inode*)buffer;
+	*inode = inodePointer[sectorToRead % SECTOR_SIZE];
+
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
