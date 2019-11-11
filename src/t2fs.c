@@ -103,7 +103,7 @@ int format2(int partition, int sectors_per_block) {
 
 	DWORD minQtdBlocos = 2 + freeBlocksBitmapSize + freeInodeBitmapSize + inodeAreaSize;
 
-	DEBUG("freeBlocksBitmapSize: %d   freeInodeBitmapSize: %d   inodeAreaSize: %d   minQtdBlocos: %d   Size inode: %d\n", freeBlocksBitmapSize, freeInodeBitmapSize, inodeAreaSize, minQtdBlocos, sizeof(struct t2fs_inode));
+	DEBUG("#INFO format2: freeBlocksBitmapSize: %d   freeInodeBitmapSize: %d   inodeAreaSize: %d   minQtdBlocos: %d   Size inode: %d\n", freeBlocksBitmapSize, freeInodeBitmapSize, inodeAreaSize, minQtdBlocos, sizeof(struct t2fs_inode));
 
 	if (qtde_blocos < minQtdBlocos) {
 		DEBUG("#ERRO format2: ha poucos blocos (diminuir qtde de setores por bloco)\n");
@@ -488,7 +488,7 @@ static int writeDirEntry(struct t2fs_record record) {
 		return ret;
 	}
 
-	DEBUG("bytesFileSize: %u  %u\n", inode.bytesFileSize, inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize);
+	DEBUG("#INFO writeDirEntry: bytesFileSize: %u  %u\n", inode.bytesFileSize, inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize);
 
 	if (!inode.blocksFileSize || !(inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize))) {
 		// Alocar novo bloco
