@@ -312,6 +312,21 @@ FILE2 open2(char* filename) {
 		return -10;
 	}
 
+	if (record.TypeVal == 2) {
+		struct t2fs_inode inode;
+		readInode(record.inodeNumber, &inode, partitionMounted);
+		struct t2fs_superbloco superbloco;
+		readSuperblock(partitionMounted, &superbloco);
+
+		unsigned char* tmpBuffer = (unsigned char*)calloc(blockSizeBytes, sizeof(unsigned char));
+		readBlockFromInode(0, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
+
+		if (findFileByName(tmpBuffer, &record) <= 0) {
+			DEBUG("#ERRO open2: softlink nao existe\n");
+			return -10;
+		}
+	}
+
 	FILE2 freeHandle = 0;
 	for (freeHandle = 0; freeHandle < MAX_OPENED_FILES; freeHandle++) {
 		if (openedFiles[freeHandle].TypeVal == 0) {
@@ -358,7 +373,35 @@ int read2(FILE2 handle, char* buffer, int size) {
 		return -15;
 	}
 
-	return -1;
+	if (openedFiles[handle].TypeVal == 0)
+		return -14;
+
+	if (size == 0)
+		return 0;
+
+	struct t2fs_superbloco superbloco;
+	readSuperblock(partitionMounted, &superbloco);
+	struct t2fs_inode inode;
+	readInode(openedFiles[handle].inodeNumber, &inode, partitionMounted);
+
+	DWORD bytesRead = MIN(inode.bytesFileSize - filePointer[handle], size);
+
+	DWORD blockSizeBytes = SECTOR_SIZE * superbloco.blockSize;
+	DWORD bytesToRead = filePointer[handle] % blockSizeBytes + bytesRead;
+
+	DWORD indexBlk = filePointer[handle] / blockSizeBytes;
+	DWORD offsetBlk = filePointer[handle] % blockSizeBytes;
+
+	DWORD blocksToRead = 1 + bytesToRead / blockSizeBytes;
+
+	unsigned char* tmpBuffer = (unsigned char*)calloc(blocksToRead * blockSizeBytes, sizeof(unsigned char));
+	for (int i = 0; i < blocksToRead; i++)
+		readBlockFromInode(indexBlk + i, inode, superbloco.blockSize, partitionMounted, &tmpBuffer[i * blockSizeBytes]);
+
+	memcpy(buffer, &tmpBuffer[offsetBlk], bytesRead);
+	filePointer[handle] += bytesRead;
+
+	return bytesRead;
 }
 
 /*-----------------------------------------------------------------------------
@@ -374,24 +417,43 @@ int write2(FILE2 handle, char* buffer, int size) {
 	if (openedFiles[handle].TypeVal == 0)
 		return -14;
 
-	int ret = 0;
-	struct t2fs_superbloco superbloco;
-	if ((ret = readSuperblock(partitionMounted, &superbloco))) {
-		DEBUG("#ERRO write2: erro na leitura do superbloco\n");
-		return ret;
-	}
+	if (size == 0)
+		return 0;
 
+	struct t2fs_superbloco superbloco;
+	readSuperblock(partitionMounted, &superbloco);
 	struct t2fs_inode inode;
 	readInode(openedFiles[handle].inodeNumber, &inode, partitionMounted);
 
+	DWORD blocksFileSizeInBytes = inode.blocksFileSize * superbloco.blockSize * SECTOR_SIZE;
+	while (filePointer[handle] + size > blocksFileSizeInBytes) {
+		int indexBlk = allocBlockOrInode(1, partitionMounted);
+		if (indexBlk < 0) {
+			DEBUG("#ERRO write2: erro ao alocar novo bloco\n");
+			return indexBlk;
+		}
+		int ret = 0;
+		if ((ret = addBlockOnInode(&inode, superbloco.blockSize, indexBlk))) {
+			DEBUG("#ERRO write2: erro ao adicionar bloco no inode\n");
+			return ret;
+		}
+		writeInode(openedFiles[handle].inodeNumber, inode, partitionMounted);
+
+		blocksFileSizeInBytes = inode.blocksFileSize * SECTOR_SIZE * superbloco.blockSize;
+	}
+
 	DWORD blockSizeBytes = SECTOR_SIZE * superbloco.blockSize;
+	DWORD bytesToWrite = filePointer[handle] % blockSizeBytes + size;
+
 	DWORD indexBlk = filePointer[handle] / blockSizeBytes;
 	DWORD offsetBlk = filePointer[handle] % blockSizeBytes;
+
+	DWORD blocksToWrite = 1 + bytesToRead / blockSizeBytes;
 
 	unsigned char* tmpBuffer = (unsigned char*)calloc(blockSizeBytes, sizeof(unsigned char));
 	readBlockFromInode(indexBlk, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
 
-	memcpy(&tmpBuffer[offsetBlk], buffer, MIN(blockSizeBytes - offsetBlk, size));
+	memcpy(&tmpBuffer[offsetBlk], buffer, size);
 
 	DWORD setor_inicial = 0;
 	partitionSectors(partitionMounted, &setor_inicial, NULL);
@@ -399,8 +461,7 @@ int write2(FILE2 handle, char* buffer, int size) {
 	for (int i = 0; i < superbloco.blockSize; i++)
 		write_sector(writeIndex + i, &tmpBuffer[i * SECTOR_SIZE]);
 
-
-	return -1;
+	return size;
 }
 
 /*-----------------------------------------------------------------------------
@@ -1260,15 +1321,15 @@ static int validateFilename(int len, char* filename) {
 				filename[newSize++] = c;
 		}
 	}
-	if (newSize <= MAX_FILENAME)
-		filename[newSize] = '\0';
-	else
-		filename[MAX_FILENAME] = '\0';
-
-	////DEBUG("#INFO validateFilename: Filename = %s\n", filename);
 
 	if (!newSize)
 		return -11;
+
+	for (; newSize < MAX_FILENAME; newSize++)
+		filename[newSize] = '\0';
+	filename[MAX_FILENAME] = '\0';
+
+	////DEBUG("#INFO validateFilename: Filename = %s\n", filename);
 
 	return 0;
 }
