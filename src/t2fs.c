@@ -319,7 +319,7 @@ FILE2 open2(char* filename) {
 		struct t2fs_superbloco superbloco;
 		readSuperblock(partitionMounted, &superbloco);
 
-		unsigned char* tmpBuffer = (unsigned char*)calloc(blockSizeBytes, sizeof(unsigned char));
+		unsigned char* tmpBuffer = (unsigned char*)calloc(superbloco.blockSize * SECTOR_SIZE, sizeof(unsigned char));
 		readBlockFromInode(0, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
 
 		if (findFileByName(tmpBuffer, &record) <= 0) {
@@ -435,6 +435,8 @@ int write2(FILE2 handle, char* buffer, int size) {
 	readSuperblock(partitionMounted, &superbloco);
 	struct t2fs_inode inode;
 	readInode(openedFiles[handle].inodeNumber, &inode, partitionMounted);
+	DWORD setor_inicial = 0;
+	partitionSectors(partitionMounted, &setor_inicial, NULL);
 
 	DWORD blocksFileSizeInBytes = inode.blocksFileSize * superbloco.blockSize * SECTOR_SIZE;
 	while (filePointer[handle] + size > blocksFileSizeInBytes) {
@@ -459,18 +461,25 @@ int write2(FILE2 handle, char* buffer, int size) {
 	DWORD indexBlk = filePointer[handle] / blockSizeBytes;
 	DWORD offsetBlk = filePointer[handle] % blockSizeBytes;
 
-	DWORD blocksToWrite = 1 + bytesToRead / blockSizeBytes;
+	DWORD blocksToWrite = 1 + bytesToWrite / blockSizeBytes;
 
 	unsigned char* tmpBuffer = (unsigned char*)calloc(blockSizeBytes, sizeof(unsigned char));
-	readBlockFromInode(indexBlk, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
 
-	memcpy(&tmpBuffer[offsetBlk], buffer, size);
+	DWORD needToWrite = size;
 
-	DWORD setor_inicial = 0;
-	partitionSectors(partitionMounted, &setor_inicial, NULL);
-	DWORD writeIndex = setor_inicial + indexBlk * superbloco.blockSize;
-	for (int i = 0; i < superbloco.blockSize; i++)
-		write_sector(writeIndex + i, &tmpBuffer[i * SECTOR_SIZE]);
+	for (int j = 0; j < blocksToWrite; j++) {
+		readBlockFromInode(indexBlk + j, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
+
+		DWORD bytesWritten = MIN(blockSizeBytes - offsetBlk, needToWrite);
+		memcpy(&tmpBuffer[offsetBlk], &buffer[j * blockSizeBytes], bytesWritten);
+
+		DWORD writeIndex = setor_inicial + indexBlk * superbloco.blockSize;
+		for (int i = 0; i < superbloco.blockSize; i++)
+			write_sector(writeIndex + i, &tmpBuffer[i * SECTOR_SIZE]);
+
+		needToWrite -= bytesWritten;
+		offsetBlk = 0;
+	}
 
 	return size;
 }
