@@ -31,10 +31,11 @@ Variaveis globais
 int partitionMounted = -1;
 int isDirMounted = 0;
 int lastListed = 0;
+int creatingSln = 0;
 
 int fileCounter = 0;
-struct t2fs_record openedFiles[MAX_OPENED_FILES] = { 0 };
-DWORD filePointer[MAX_OPENED_FILES] = { 0 };
+struct t2fs_record openedFiles[MAX_OPENED_FILES + 1] = { 0 };
+DWORD filePointer[MAX_OPENED_FILES + 1] = { 0 };
 
 /*-----------------------------------------------------------------------------
 Funcao:	Informa a identificacao dos desenvolvedores do T2FS.
@@ -246,7 +247,7 @@ FILE2 create2(char* filename) {
 	struct t2fs_record record;
 	if ((ret = findFileByName(filename, &record)) == 0) {
 		// criar novo arquivo
-		if ((ret = createNewFile(filename, &record, 1))) {
+		if ((ret = createNewFile(filename, &record, TYPEVAL_REGULAR))) {
 			DEBUG("#ERRO create2: erro ao criar novo arquivo (%d)\n", ret);
 			return ret;
 		}
@@ -268,7 +269,7 @@ FILE2 create2(char* filename) {
 
 	FILE2 freeHandle = 0;
 	for (freeHandle = 0; freeHandle < MAX_OPENED_FILES; freeHandle++) {
-		if (openedFiles[freeHandle].TypeVal == 0) {
+		if (openedFiles[freeHandle].TypeVal == TYPEVAL_INVALIDO) {
 			openedFiles[freeHandle] = record;
 			filePointer[freeHandle] = 0;
 			fileCounter++;
@@ -312,7 +313,7 @@ FILE2 open2(char* filename) {
 		return -10;
 	}
 
-	if (record.TypeVal == 2) {
+	if (record.TypeVal == TYPEVAL_LINK) {
 		struct t2fs_inode inode;
 		readInode(record.inodeNumber, &inode, partitionMounted);
 		struct t2fs_superbloco superbloco;
@@ -329,7 +330,7 @@ FILE2 open2(char* filename) {
 
 	FILE2 freeHandle = 0;
 	for (freeHandle = 0; freeHandle < MAX_OPENED_FILES; freeHandle++) {
-		if (openedFiles[freeHandle].TypeVal == 0) {
+		if (openedFiles[freeHandle].TypeVal == TYPEVAL_INVALIDO) {
 			openedFiles[freeHandle] = record;
 			filePointer[freeHandle] = 0;
 			fileCounter++;
@@ -353,11 +354,11 @@ int close2(FILE2 handle) {
 		DEBUG("#ERRO close2: handle invalido\n");
 		return -14;
 	}
-	if (openedFiles[handle].TypeVal == 0)
+	if (openedFiles[handle].TypeVal == TYPEVAL_INVALIDO)
 		return -14;
 
-	fileCounter--;		
-	openedFiles[handle].TypeVal = 0;
+	fileCounter--;
+	openedFiles[handle].TypeVal = TYPEVAL_INVALIDO;
 	filePointer[handle] = 0;
 
 	return 0;
@@ -369,11 +370,16 @@ Funcao:	Funcao usada para realizar a leitura de uma certa quantidade
 -----------------------------------------------------------------------------*/
 int read2(FILE2 handle, char* buffer, int size) {
 	if (partitionMounted == -1) {
-		DEBUG("#ERRO open2: particao ou diretorio nao montado\n");
+		DEBUG("#ERRO read2: particao ou diretorio nao montado\n");
 		return -15;
 	}
 
-	if (openedFiles[handle].TypeVal == 0)
+	if (handle < 0 || (handle >= MAX_OPENED_FILES && !creatingSln)) {
+		DEBUG("#ERRO read2: handle invalido\n");
+		return -14;
+	}
+
+	if (openedFiles[handle].TypeVal == TYPEVAL_INVALIDO)
 		return -14;
 
 	if (size == 0)
@@ -414,7 +420,12 @@ int write2(FILE2 handle, char* buffer, int size) {
 		return -15;
 	}
 
-	if (openedFiles[handle].TypeVal == 0)
+	if (handle < 0 || (handle >= MAX_OPENED_FILES && !creatingSln)) {
+		DEBUG("#ERRO write2: handle invalido\n");
+		return -14;
+	}
+
+	if (openedFiles[handle].TypeVal == TYPEVAL_INVALIDO)
 		return -14;
 
 	if (size == 0)
@@ -524,7 +535,47 @@ int closedir2(void) {
 Funcao:	Funcao usada para criar um caminho alternativo (softlink)
 -----------------------------------------------------------------------------*/
 int sln2(char* linkname, char* filename) {
-	return -1;
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO sln2: particao ou diretorio nao montado\n");
+		return -15;
+	}
+
+	int ret = 0;
+	if ((ret = validateFilename(strlen(linkname), linkname))) {
+		DEBUG("#ERRO sln2: linkname invalido\n");
+		return ret;
+	}
+
+	if ((ret = validateFilename(strlen(filename), filename))) {
+		DEBUG("#ERRO sln2: filename invalido\n");
+		return ret;
+	}
+
+	struct t2fs_record record;
+	if (findFileByName(filename, &record) <= 0) {
+		DEBUG("#ERRO sln2: arquivo nao existe\n");
+		return -10;
+	}
+
+	if ((ret = createNewFile(linkname, &record, TYPEVAL_LINK))) {
+		DEBUG("#ERRO sln2: erro ao criar novo arquivo (%d)\n", ret);
+		return ret;
+	}
+
+	creatingSln = 1;
+	openedFiles[MAX_OPENED_FILES] = record;
+	filePointer[MAX_OPENED_FILES] = 0;
+
+	if ((ret = write2(MAX_OPENED_FILES, filename, strlen(filename)))) {
+		DEBUG("#ERRO sln2: erro ao criar lik simbolico\n", ret);
+		delete2(linkname);
+		creatingSln = 0;
+
+		return ret;
+	}
+	creatingSln = 0;
+
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
