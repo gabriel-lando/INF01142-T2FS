@@ -29,6 +29,7 @@ Variaveis globais
 #define MAX_FILENAME		50
 
 int partitionMounted = -1;
+int isDirMounted = 0;
 int fileCounter = 0;
 struct t2fs_record openedFiles[MAX_OPENED_FILES] = { 0 };
 
@@ -191,8 +192,8 @@ int mount(int partition) {
 
 	partitionMounted = partition;
 
-	for (int i = 0; i < MAX_OPENED_FILES; i++)
-		openedFiles[i].TypeVal = 0;
+	for (FILE2 i = 0; i < MAX_OPENED_FILES; i++)
+		close2(i);
 
 	return 0;
 }
@@ -202,8 +203,15 @@ Funcao:	Desmonta a particao atualmente montada, liberando o ponto de montagem.
 -----------------------------------------------------------------------------*/
 int umount(void) {
 	partitionMounted = -1;
+	isDirMounted = 0;
 
-	/*CLOSE ALL FILES*/
+	for (int i = 0; i < MAX_OPENED_FILES; i++) {
+		if (openedFiles[freeHandle].TypeVal == 0) {
+			openedFiles[freeHandle] = record;
+			fileCounter++;
+			break;
+		}
+	}
 
 	return 0;
 }
@@ -219,9 +227,9 @@ Retorno:
 		-11: Filename muito longo
 -----------------------------------------------------------------------------*/
 FILE2 create2(char* filename) {
-	if (partitionMounted == -1) {
-		DEBUG("#ERRO create2: particao nao montada\n");
-		return -3;
+	if (partitionMounted == -1 || !isDirMounted) {
+		DEBUG("#ERRO create2: particao ou diretorio nao montado\n");
+		return -15;
 	}
 
 	if(fileCounter >= MAX_OPENED_FILES) {
@@ -281,9 +289,9 @@ int delete2(char* filename) {
 Funcao:	Funcao que abre um arquivo existente no disco.
 -----------------------------------------------------------------------------*/
 FILE2 open2(char* filename) {
-	if (partitionMounted == -1) {
-		DEBUG("#ERRO open2: particao nao montada\n");
-		return -3;
+	if (partitionMounted == -1 || !isDirMounted) {
+		DEBUG("#ERRO open2: particao ou diretorio nao montado\n");
+		return -15;
 	}
 
 	if (fileCounter >= MAX_OPENED_FILES) {
@@ -319,15 +327,17 @@ FILE2 open2(char* filename) {
 Funcao:	Funcao usada para fechar um arquivo.
 -----------------------------------------------------------------------------*/
 int close2(FILE2 handle) {
-	if (partitionMounted == -1) {
-		DEBUG("#ERRO close2: particao nao montada\n");
-		return -3;
+	if (partitionMounted == -1 || !isDirMounted) {
+		DEBUG("#ERRO close2: particao ou diretorio nao montado\n");
+		return -15;
 	}
 
-	if (handle < 0 || handle >= MAX_OPENED_FILES || openedFiles[handle].TypeVal == 0) {
+	if (handle < 0 || handle >= MAX_OPENED_FILES) {
 		DEBUG("#ERRO close2: handle invalido\n");
 		return -14;
 	}
+	if (openedFiles[handle].TypeVal == 0)
+		return -14;
 
 	fileCounter--;		
 	openedFiles[handle].TypeVal = 0;
@@ -355,7 +365,13 @@ int write2(FILE2 handle, char* buffer, int size) {
 Funcao:	Funcao que abre um diretorio existente no disco.
 -----------------------------------------------------------------------------*/
 int opendir2(void) {
-	return -1;
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO opendir2: particao nao montada\n");
+		return -15;
+	}
+	isDirMounted = 1;
+
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -369,7 +385,14 @@ int readdir2(DIRENT2* dentry) {
 Funcao:	Funcao usada para fechar um diretorio.
 -----------------------------------------------------------------------------*/
 int closedir2(void) {
-	return -1;
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO closedir2: particao nao montada\n");
+		return -15;
+	}
+
+	isDirMounted = 0;
+
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------

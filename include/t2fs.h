@@ -15,6 +15,7 @@ Retornos:
 		-12: Inode excedeu o limite de blocos
 		-13: Limite de arquivos abertos excedido
 		-14: HANDLE invalido
+		-15: Particao ou diretorio nao montado
 */
 
 #ifndef __LIBT2FS___
