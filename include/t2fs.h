@@ -11,8 +11,10 @@ Retornos:
 		-8: Entrada nao existe no registro de entradas de diretorio
 		-9: Bloco nao existe no inode
 		-10: Arquivo não encontrado
-		-11: Filename muito longo
+		-11: Filename incorreto
 		-12: Inode excedeu o limite de blocos
+		-13: Limite de arquivos abertos excedido
+		-14: HANDLE invalido
 */
 
 #ifndef __LIBT2FS___
