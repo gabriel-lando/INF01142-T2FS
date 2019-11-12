@@ -322,7 +322,10 @@ FILE2 open2(char* filename) {
 		unsigned char* tmpBuffer = (unsigned char*)calloc(superbloco.blockSize * SECTOR_SIZE, sizeof(unsigned char));
 		readBlockFromInode(0, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
 
-		if (findFileByName(tmpBuffer, &record) <= 0) {
+		char linkname[MAX_FILENAME + 1] = { 0 };
+		memcpy(linkname, tmpBuffer, MAX_FILENAME + 1);
+
+		if (findFileByName(linkname, &record) <= 0) {
 			DEBUG("#ERRO open2: softlink nao existe\n");
 			return -10;
 		}
