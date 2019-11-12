@@ -82,7 +82,7 @@ char helpCreate[] = "[file]       -> create new [file] in T2FS";
 char helpDelete[] = "[file]       -> deletes [file] from T2FS";
 char helpSeek[] = "[hdl] [pos]  -> set CP of [hdl] file on [pos]";
 char helpTrunc[] = "[hdl] [siz]  -> truncate file [hdl] to [siz] bytes";
-char helpLn[] = "[lnk] [file] -> create link [lnk] to [file]";
+char helpLn[] = "[type] [lnk] [file] -> create soft [-s] or hard [-h] link [lnk] to [file]";
 char helpFormat[] = "[part]  [bs] -> format virtual disk";
 
 char helpCopy[] = "[src] [dst]  -> copy files: [src] -> [dst]";
@@ -820,9 +820,24 @@ void cmdRead(void) {
 void cmdLn(void) {
 	char* linkname;
 	int err;
+	int isHard = -1;
 
 	// get first parameter => link name
 	char* token = strtok(NULL, " \t");
+	if (token == NULL) {
+		printf("Missing parameter -s or -h\n");
+		return;
+	}
+	else if (!strcmp(token, "-s"))
+		isHard = 0;
+	else if (!strcmp(token, "-h"))
+		isHard = 1;
+	else {
+		printf("Incorrect parameter LINK TYPE\n");
+		return;
+	}
+
+	token = strtok(NULL, " \t");
 	if (token == NULL) {
 		printf("Missing parameter LINKNAME\n");
 		return;
@@ -830,21 +845,24 @@ void cmdLn(void) {
 	linkname = token;
 
 	// get second parameter => pathname
-	token = strtok(NULL, " \t");
+	token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter PATHNAME\n");
 		return;
 	}
 
 	// make link
-	//err = ln2 (linkname, token);
-	err = sln2(linkname, token);
+	// err = ln2 (linkname, token);
+	if (isHard)
+		err = hln2(linkname, token);
+	else
+		err = sln2(linkname, token);
 	if (err != 0) {
 		printf("Error: %d\n", err);
 		return;
 	}
 
-	printf("Created link %s to file %s\n", linkname, token);
+	printf("Created %slink %s to file %s\n", isHard ? "hard" : "soft",linkname, token);
 
 }
 

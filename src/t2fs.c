@@ -31,8 +31,10 @@ Variaveis globais
 int partitionMounted = -1;
 int isDirMounted = 0;
 int lastListed = 0;
+
 int fileCounter = 0;
 struct t2fs_record openedFiles[MAX_OPENED_FILES] = { 0 };
+DWORD filePointer[MAX_OPENED_FILES] = { 0 };
 
 /*-----------------------------------------------------------------------------
 Funcao:	Informa a identificacao dos desenvolvedores do T2FS.
@@ -46,6 +48,7 @@ int identify2(char* name, int size) {
 /*-----------------------------------------------------------------------------
 Funcao extras essenciais para o funcionamento do programa
 -----------------------------------------------------------------------------*/
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 static void DEBUG(char* format, ...);
 static DWORD strToInt(unsigned char* str, int size);
 static DWORD Checksum(void* data, int qty);
@@ -267,6 +270,7 @@ FILE2 create2(char* filename) {
 	for (freeHandle = 0; freeHandle < MAX_OPENED_FILES; freeHandle++) {
 		if (openedFiles[freeHandle].TypeVal == 0) {
 			openedFiles[freeHandle] = record;
+			filePointer[freeHandle] = 0;
 			fileCounter++;
 			break;
 		}
@@ -312,6 +316,7 @@ FILE2 open2(char* filename) {
 	for (freeHandle = 0; freeHandle < MAX_OPENED_FILES; freeHandle++) {
 		if (openedFiles[freeHandle].TypeVal == 0) {
 			openedFiles[freeHandle] = record;
+			filePointer[freeHandle] = 0;
 			fileCounter++;
 			break;
 		}
@@ -338,6 +343,7 @@ int close2(FILE2 handle) {
 
 	fileCounter--;		
 	openedFiles[handle].TypeVal = 0;
+	filePointer[handle] = 0;
 
 	return 0;
 }
@@ -347,6 +353,11 @@ Funcao:	Funcao usada para realizar a leitura de uma certa quantidade
 		de bytes (size) de um arquivo.
 -----------------------------------------------------------------------------*/
 int read2(FILE2 handle, char* buffer, int size) {
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO open2: particao ou diretorio nao montado\n");
+		return -15;
+	}
+
 	return -1;
 }
 
@@ -355,6 +366,40 @@ Funcao:	Funcao usada para realizar a escrita de uma certa quantidade
 		de bytes (size) de  um arquivo.
 -----------------------------------------------------------------------------*/
 int write2(FILE2 handle, char* buffer, int size) {
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO write2: particao ou diretorio nao montado\n");
+		return -15;
+	}
+
+	if (openedFiles[handle].TypeVal == 0)
+		return -14;
+
+	int ret = 0;
+	struct t2fs_superbloco superbloco;
+	if ((ret = readSuperblock(partitionMounted, &superbloco))) {
+		DEBUG("#ERRO write2: erro na leitura do superbloco\n");
+		return ret;
+	}
+
+	struct t2fs_inode inode;
+	readInode(openedFiles[handle].inodeNumber, &inode, partitionMounted);
+
+	DWORD blockSizeBytes = SECTOR_SIZE * superbloco.blockSize;
+	DWORD indexBlk = filePointer[handle] / blockSizeBytes;
+	DWORD offsetBlk = filePointer[handle] % blockSizeBytes;
+
+	unsigned char* tmpBuffer = (unsigned char*)calloc(blockSizeBytes, sizeof(unsigned char));
+	readBlockFromInode(indexBlk, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
+
+	memcpy(&tmpBuffer[offsetBlk], buffer, MIN(blockSizeBytes - offsetBlk, size));
+
+	DWORD setor_inicial = 0;
+	partitionSectors(partitionMounted, &setor_inicial, NULL);
+	DWORD writeIndex = setor_inicial + indexBlk * superbloco.blockSize;
+	for (int i = 0; i < superbloco.blockSize; i++)
+		write_sector(writeIndex + i, &tmpBuffer[i * SECTOR_SIZE]);
+
+
 	return -1;
 }
 
@@ -425,9 +470,39 @@ int sln2(char* linkname, char* filename) {
 Funcao:	Funcao usada para criar um caminho alternativo (hardlink)
 -----------------------------------------------------------------------------*/
 int hln2(char* linkname, char* filename) {
-	return -1;
-}
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO hln2: particao ou diretorio nao montado\n");
+		return -15;
+	}
 
+	int ret = 0;
+	if ((ret = validateFilename(strlen(linkname), linkname))) {
+		DEBUG("#ERRO hln2: linkname invalido\n");
+		return ret;
+	}
+
+	if ((ret = validateFilename(strlen(filename), filename))) {
+		DEBUG("#ERRO hln2: filename invalido\n");
+		return ret;
+	}
+
+	struct t2fs_record record;
+	if (findFileByName(filename, &record) <= 0) {
+		DEBUG("#ERRO hln2: arquivo nao existe\n");
+		return -10;
+	}
+
+	struct t2fs_inode inode;
+	readInode(record.inodeNumber, &inode, partitionMounted);
+
+	strcpy(record.name, linkname);
+	writeDirEntry(record);
+
+	inode.RefCounter++;
+	writeInode(record.inodeNumber, inode, partitionMounted);
+
+	return 0;
+}
 
 
 
@@ -603,7 +678,7 @@ static int writeDirEntry(struct t2fs_record record) {
 		return ret;
 	}
 
-	////DEBUG("#INFO writeDirEntry: bytesFileSize: %u  %u\n", inode.bytesFileSize, inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize);
+	//DEBUG("#INFO writeDirEntry: bytesFileSize: %u  %u\n", inode.bytesFileSize, inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize);
 
 	if (!inode.blocksFileSize || !(inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize))) {
 		// Alocar novo bloco
@@ -638,8 +713,7 @@ static int writeDirEntry(struct t2fs_record record) {
 	tmpArray[indiceDir] = record;
 	inode.bytesFileSize += sizeof(struct t2fs_record);
 
-	////DEBUG("#INFO writeDirEntry: indiceDir: %u  sector to write: %u\n", indiceDir, ret);
-	/***************************************************************************************************************/
+	//DEBUG("#INFO writeDirEntry: indiceDir: %u  sector to write: %u\n", indiceDir, ret);
 	DWORD setor_inicial = 0;
 	partitionSectors(partitionMounted, &setor_inicial, NULL);
 	DWORD writeIndex = setor_inicial + index * superbloco.blockSize;
@@ -647,7 +721,6 @@ static int writeDirEntry(struct t2fs_record record) {
 	//DEBUG("#INFO: Indice: %u  writeIndex %u\n", index, writeIndex);
 	for (int i = 0; i < superbloco.blockSize; i++)
 		write_sector(writeIndex + i, &buffer[i * SECTOR_SIZE]);
-	/***************************************************************************************************************/
 	if ((ret = writeInode(0, inode, partitionMounted))) {
 		DEBUG("#ERRO writeDirEntry: erro na gravacao do inode 0\n");
 		return ret;
