@@ -30,6 +30,7 @@ Variaveis globais
 
 int partitionMounted = -1;
 int isDirMounted = 0;
+int lastListed = 0;
 int fileCounter = 0;
 struct t2fs_record openedFiles[MAX_OPENED_FILES] = { 0 };
 
@@ -195,6 +196,7 @@ int mount(int partition) {
 	for (FILE2 i = 0; i < MAX_OPENED_FILES; i++)
 		close2(i);
 
+
 	return 0;
 }
 
@@ -202,16 +204,11 @@ int mount(int partition) {
 Funcao:	Desmonta a particao atualmente montada, liberando o ponto de montagem.
 -----------------------------------------------------------------------------*/
 int umount(void) {
-	partitionMounted = -1;
-	isDirMounted = 0;
 
-	for (int i = 0; i < MAX_OPENED_FILES; i++) {
-		if (openedFiles[freeHandle].TypeVal == 0) {
-			openedFiles[freeHandle] = record;
-			fileCounter++;
-			break;
-		}
-	}
+	for (FILE2 i = 0; i < MAX_OPENED_FILES; i++)
+		close2(i);
+
+	partitionMounted = -1;
 
 	return 0;
 }
@@ -227,7 +224,7 @@ Retorno:
 		-11: Filename muito longo
 -----------------------------------------------------------------------------*/
 FILE2 create2(char* filename) {
-	if (partitionMounted == -1 || !isDirMounted) {
+	if (partitionMounted == -1) {
 		DEBUG("#ERRO create2: particao ou diretorio nao montado\n");
 		return -15;
 	}
@@ -289,7 +286,7 @@ int delete2(char* filename) {
 Funcao:	Funcao que abre um arquivo existente no disco.
 -----------------------------------------------------------------------------*/
 FILE2 open2(char* filename) {
-	if (partitionMounted == -1 || !isDirMounted) {
+	if (partitionMounted == -1) {
 		DEBUG("#ERRO open2: particao ou diretorio nao montado\n");
 		return -15;
 	}
@@ -327,7 +324,7 @@ FILE2 open2(char* filename) {
 Funcao:	Funcao usada para fechar um arquivo.
 -----------------------------------------------------------------------------*/
 int close2(FILE2 handle) {
-	if (partitionMounted == -1 || !isDirMounted) {
+	if (partitionMounted == -1) {
 		DEBUG("#ERRO close2: particao ou diretorio nao montado\n");
 		return -15;
 	}
@@ -369,7 +366,9 @@ int opendir2(void) {
 		DEBUG("#ERRO opendir2: particao nao montada\n");
 		return -15;
 	}
+
 	isDirMounted = 1;
+	lastListed = 0;
 
 	return 0;
 }
@@ -378,7 +377,27 @@ int opendir2(void) {
 Funcao:	Funcao usada para ler as entradas de um diretorio.
 -----------------------------------------------------------------------------*/
 int readdir2(DIRENT2* dentry) {
-	return -1;
+	if (partitionMounted == -1 || !isDirMounted) {
+		DEBUG("#ERRO close2: particao ou diretorio nao montado\n");
+		return -15;
+	}
+
+	struct t2fs_record record;
+	int ret = 0;
+	if ((ret = readDirEntry(lastListed++, &record)) < 0) {
+		lastListed = 0;
+		return ret;
+	}
+
+	struct t2fs_inode inode;
+	if ((ret = readInode(record.inodeNumber, &inode, partitionMounted)))
+		return ret;
+
+	dentry->fileType = record.TypeVal;
+	dentry->fileSize = inode.bytesFileSize;
+	strcpy(dentry->name, record.name);
+
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -537,7 +556,7 @@ static int readDirEntry(int index, struct t2fs_record* record) {
 	}
 	 
 	if (((index + 1) * sizeof(struct t2fs_record)) > (inode.bytesFileSize)) {
-		DEBUG("#ERRO readDirEntry: indice nao se encontra na entrada de diretorio\n");
+		//DEBUG("#ERRO readDirEntry: indice nao se encontra na entrada de diretorio\n");
 		return -8;
 	}
 
