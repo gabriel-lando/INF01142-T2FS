@@ -97,6 +97,10 @@ int format2(int partition, int sectors_per_block) {
 	if ((ret = isPartition(partition)))
 		return ret;
 
+	// Testar se a particao ta montada, se tiver, desmontar ela
+	if (partition == partitionMounted)
+		umount();
+
 	DWORD setor_inicial = 0;
 	DWORD setor_final = 0; 
 	partitionSectors(partition, &setor_inicial, &setor_final);
@@ -940,7 +944,7 @@ static int writeDirEntry(struct t2fs_record record) {
 
 	//DEBUG("#INFO writeDirEntry: bytesFileSize: %u  %u\n", inode.bytesFileSize, inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize);
 
-	if (!inode.blocksFileSize || !(inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE / superbloco.blockSize))) {
+	if (!inode.blocksFileSize || !(inode.bytesFileSize % (inode.blocksFileSize * SECTOR_SIZE * superbloco.blockSize))) {
 		// Alocar novo bloco
 		int indexBlk = allocBlockOrInode(1, partitionMounted);
 		if (indexBlk < 0) {
