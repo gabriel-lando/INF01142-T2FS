@@ -34,7 +34,7 @@ int lastListed = 0;
 int creatingSln = 0;
 
 int fileCounter = 0;
-struct t2fs_record openedFiles[MAX_OPENED_FILES + 1] = { 0 };
+struct t2fs_record openedFiles[MAX_OPENED_FILES + 1] = { { 0 } };
 DWORD filePointer[MAX_OPENED_FILES + 1] = { 0 };
 
 /*-----------------------------------------------------------------------------
