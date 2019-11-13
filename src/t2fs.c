@@ -20,7 +20,7 @@ Alunos:
 -> Habilitar o debug: linha abaixo descomentada.
 -> Desabilitar o debug: linha abaixo comentada.
 -----------------------------------------------------------------------------*/
-#define IS_DEBUG
+// #define IS_DEBUG
 
 /*-----------------------------------------------------------------------------
 Variaveis globais
@@ -49,6 +49,7 @@ int identify2(char* name, int size) {
 /*-----------------------------------------------------------------------------
 Funcao extras essenciais para o funcionamento do programa
 -----------------------------------------------------------------------------*/
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 static void DEBUG(char* format, ...);
 static DWORD strToInt(unsigned char* str, int size);
@@ -68,6 +69,7 @@ static int createNewFile(char* filename, struct t2fs_record* record, int type);
 static int writeDirEntry(struct t2fs_record record);
 static int disallocBlockOrInode(int isBlock, int partition, int index);
 static int clearInodeBlocks(struct t2fs_inode* inode, int sectors_per_block);
+static int removeDirEntry(int index, struct t2fs_record record);
 
 
 
@@ -238,16 +240,19 @@ FILE2 create2(char* filename) {
 		return -13;
 	}
 
+	char filenameCpy[MAX_FILENAME + 1];
+	strcpy(filenameCpy, filename);
+
 	int ret = 0;
-	if ((ret = validateFilename(strlen(filename), filename))) {
+	if ((ret = validateFilename(strlen(filenameCpy), filenameCpy))) {
 		DEBUG("#ERRO create2: filename invalido\n");
 		return ret;
 	}
 
 	struct t2fs_record record;
-	if ((ret = findFileByName(filename, &record)) == 0) {
+	if ((ret = findFileByName(filenameCpy, &record)) == 0) {
 		// criar novo arquivo
-		if ((ret = createNewFile(filename, &record, TYPEVAL_REGULAR))) {
+		if ((ret = createNewFile(filenameCpy, &record, TYPEVAL_REGULAR))) {
 			DEBUG("#ERRO create2: erro ao criar novo arquivo (%d)\n", ret);
 			return ret;
 		}
@@ -284,7 +289,54 @@ FILE2 create2(char* filename) {
 Funcao:	Funcao usada para remover (apagar) um arquivo do disco.
 -----------------------------------------------------------------------------*/
 int delete2(char* filename) {
-	return -1;
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO delete2: particao ou diretorio nao montado\n");
+		return -15;
+	}
+
+	char filenameCpy[MAX_FILENAME + 1];
+	strcpy(filenameCpy, filename);
+
+	int ret = 0;
+	if ((ret = validateFilename(strlen(filenameCpy), filenameCpy))) {
+		DEBUG("#ERRO delete2: filename invalido\n");
+		return ret;
+	}
+
+	struct t2fs_record record;
+	int recordIndex = 0;
+	if ((recordIndex = findFileByName(filenameCpy, &record)) <= 0) {
+		DEBUG("#ERRO delete2: arquivo nao existe\n");
+		return -10;
+	}
+	recordIndex--; //findFileByName retorna index + 1, portanto, eh preciso subtrair 1 do indice
+
+	// Fecha todos os handles desse arquivo
+	for (int i = 0; i < MAX_OPENED_FILES; i++) {
+		if (!strcmp(record.name, openedFiles[i].name)) {
+			fileCounter--;
+			openedFiles[i].TypeVal = TYPEVAL_INVALIDO;
+			filePointer[i] = 0;
+		}
+	}
+
+	struct t2fs_inode inode;
+	readInode(record.inodeNumber, &inode, partitionMounted);
+	struct t2fs_superbloco superbloco;
+	readSuperblock(partitionMounted, &superbloco);
+
+	if (inode.RefCounter) {
+		inode.RefCounter--;
+		writeInode(record.inodeNumber, inode, partitionMounted);
+		removeDirEntry(recordIndex, record);
+	}
+	else {
+		clearInodeBlocks(&inode, superbloco.blockSize);
+		removeDirEntry(recordIndex, record);
+		disallocBlockOrInode(0, partitionMounted, record.inodeNumber);
+	}
+
+	return 0;
 }
 
 /*-----------------------------------------------------------------------------
@@ -301,14 +353,17 @@ FILE2 open2(char* filename) {
 		return -13;
 	}
 
+	char filenameCpy[MAX_FILENAME + 1];
+	strcpy(filenameCpy, filename);
+
 	int ret = 0;
-	if ((ret = validateFilename(strlen(filename), filename))) {
+	if ((ret = validateFilename(strlen(filenameCpy), filenameCpy))) {
 		DEBUG("#ERRO open2: filename invalido\n");
 		return ret;
 	}
 
 	struct t2fs_record record;
-	if (findFileByName(filename, &record) <= 0) {
+	if (findFileByName(filenameCpy, &record) <= 0) {
 		DEBUG("#ERRO open2: arquivo nao existe\n");
 		return -10;
 	}
@@ -471,18 +526,23 @@ int write2(FILE2 handle, char* buffer, int size) {
 	DWORD needToWrite = size;
 
 	for (int j = 0; j < blocksToWrite; j++) {
-		readBlockFromInode(indexBlk + j, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
+		DWORD writeIndex = readBlockFromInode(indexBlk + j, inode, superbloco.blockSize, partitionMounted, tmpBuffer);
+		writeIndex = setor_inicial + writeIndex * superbloco.blockSize;
 
 		DWORD bytesWritten = MIN(blockSizeBytes - offsetBlk, needToWrite);
 		memcpy(&tmpBuffer[offsetBlk], &buffer[j * blockSizeBytes], bytesWritten);
 
-		DWORD writeIndex = setor_inicial + indexBlk * superbloco.blockSize;
+		//DWORD writeIndex = setor_inicial + indexBlk * superbloco.blockSize;
 		for (int i = 0; i < superbloco.blockSize; i++)
 			write_sector(writeIndex + i, &tmpBuffer[i * SECTOR_SIZE]);
 
 		needToWrite -= bytesWritten;
 		offsetBlk = 0;
 	}
+
+	filePointer[handle] += size;
+	inode.bytesFileSize = MAX(inode.bytesFileSize, filePointer[handle]);
+	writeInode(openedFiles[handle].inodeNumber, inode, partitionMounted);
 
 	return size;
 }
@@ -552,24 +612,30 @@ int sln2(char* linkname, char* filename) {
 		return -15;
 	}
 
+	char linknameCpy[MAX_FILENAME + 1];
+	char filenameCpy[MAX_FILENAME + 1];
+	strcpy(linknameCpy, linkname);
+	strcpy(filenameCpy, filename);
+
+
 	int ret = 0;
-	if ((ret = validateFilename(strlen(linkname), linkname))) {
+	if ((ret = validateFilename(strlen(linknameCpy), linknameCpy))) {
 		DEBUG("#ERRO sln2: linkname invalido\n");
 		return ret;
 	}
 
-	if ((ret = validateFilename(strlen(filename), filename))) {
+	if ((ret = validateFilename(strlen(filenameCpy), filenameCpy))) {
 		DEBUG("#ERRO sln2: filename invalido\n");
 		return ret;
 	}
 
 	struct t2fs_record record;
-	if (findFileByName(filename, &record) <= 0) {
+	if (findFileByName(filenameCpy, &record) <= 0) {
 		DEBUG("#ERRO sln2: arquivo nao existe\n");
 		return -10;
 	}
 
-	if ((ret = createNewFile(linkname, &record, TYPEVAL_LINK))) {
+	if ((ret = createNewFile(linknameCpy, &record, TYPEVAL_LINK))) {
 		DEBUG("#ERRO sln2: erro ao criar novo arquivo (%d)\n", ret);
 		return ret;
 	}
@@ -578,9 +644,9 @@ int sln2(char* linkname, char* filename) {
 	openedFiles[MAX_OPENED_FILES] = record;
 	filePointer[MAX_OPENED_FILES] = 0;
 
-	if ((ret = write2(MAX_OPENED_FILES, filename, strlen(filename)))) {
+	if (write2(MAX_OPENED_FILES, filenameCpy, strlen(filenameCpy)) <= 0) {
 		DEBUG("#ERRO sln2: erro ao criar lik simbolico\n", ret);
-		delete2(linkname);
+		delete2(linknameCpy);
 		creatingSln = 0;
 
 		return ret;
@@ -599,19 +665,25 @@ int hln2(char* linkname, char* filename) {
 		return -15;
 	}
 
+	char linknameCpy[MAX_FILENAME + 1];
+	char filenameCpy[MAX_FILENAME + 1];
+	strcpy(linknameCpy, linkname);
+	strcpy(filenameCpy, filename);
+
+
 	int ret = 0;
-	if ((ret = validateFilename(strlen(linkname), linkname))) {
+	if ((ret = validateFilename(strlen(linknameCpy), linknameCpy))) {
 		DEBUG("#ERRO hln2: linkname invalido\n");
 		return ret;
 	}
 
-	if ((ret = validateFilename(strlen(filename), filename))) {
+	if ((ret = validateFilename(strlen(filenameCpy), filenameCpy))) {
 		DEBUG("#ERRO hln2: filename invalido\n");
 		return ret;
 	}
 
 	struct t2fs_record record;
-	if (findFileByName(filename, &record) <= 0) {
+	if (findFileByName(filenameCpy, &record) <= 0) {
 		DEBUG("#ERRO hln2: arquivo nao existe\n");
 		return -10;
 	}
@@ -619,7 +691,7 @@ int hln2(char* linkname, char* filename) {
 	struct t2fs_inode inode;
 	readInode(record.inodeNumber, &inode, partitionMounted);
 
-	strcpy(record.name, linkname);
+	strcpy(record.name, linknameCpy);
 	writeDirEntry(record);
 
 	inode.RefCounter++;
@@ -726,6 +798,70 @@ static int findFileByName(char* filename, struct t2fs_record* record) {
 	}
 
 	//DEBUG("#ERRO findFileByName: arquivo nao encontrado\n");
+	return 0;
+}
+
+/*-----------------------------------------------------------------------------
+Funcao:	Remove uma entrada de diretorio do disco
+
+Retorno:
+		 0: Sucesso
+-----------------------------------------------------------------------------*/
+static int removeDirEntry(int index, struct t2fs_record record) {
+	if (partitionMounted == -1) {
+		DEBUG("#ERRO removeDirEntry: particao nao montada\n");
+		return -3;
+	}
+
+	struct t2fs_inode inode;
+	readInode(0, &inode, partitionMounted);
+	struct t2fs_superbloco superbloco;
+	readSuperblock(partitionMounted, &superbloco);
+	DWORD setor_inicial = 0;
+	partitionSectors(partitionMounted, &setor_inicial, NULL);
+
+
+	if (((index + 1) * sizeof(struct t2fs_record)) > (inode.bytesFileSize)) {
+		//DEBUG("#ERRO readDirEntry: indice nao se encontra na entrada de diretorio\n");
+		return -8;
+	}
+
+	int indexBlock = index * sizeof(struct t2fs_record) / (SECTOR_SIZE * superbloco.blockSize);
+	int offsetBlock = index % ((SECTOR_SIZE * superbloco.blockSize) / sizeof(struct t2fs_record));
+
+	int lastBlkIndex = inode.blocksFileSize - 1;
+	int lastDirEntry = (inode.bytesFileSize / sizeof(struct t2fs_record)) - 1;
+	int lastDirOffset = lastDirEntry % ((SECTOR_SIZE * superbloco.blockSize) / sizeof(struct t2fs_record));
+
+	////DEBUG("#INFO readDirEntry: indexBlock: %u  offsetBlock: %u\n", indexBlock, offsetBlock);
+
+	unsigned char* actualBuffer = (unsigned char*)malloc(SECTOR_SIZE * superbloco.blockSize);
+	int curretBlockAddr = readBlockFromInode(indexBlock, inode, superbloco.blockSize, partitionMounted, actualBuffer);
+
+	unsigned char* lastBuffer = (unsigned char*)malloc(SECTOR_SIZE * superbloco.blockSize);
+	int lastBlockAddr = readBlockFromInode(lastBlkIndex, inode, superbloco.blockSize, partitionMounted, lastBuffer);
+
+	struct t2fs_record* pRecordActual = (struct t2fs_record*)actualBuffer;
+	struct t2fs_record* pRecordLast = (struct t2fs_record*)lastBuffer;
+	pRecordActual[offsetBlock] = pRecordLast[lastDirOffset];
+
+	if (lastDirOffset == 0) {
+		disallocBlockOrInode(1, partitionMounted, lastBlockAddr);
+		inode.blocksFileSize--;
+	}
+
+	DWORD writeActualIndex = setor_inicial + curretBlockAddr * superbloco.blockSize;
+
+	for (int i = 0; i < superbloco.blockSize; i++)
+		write_sector(writeActualIndex + i, &actualBuffer[i * SECTOR_SIZE]);
+
+	free(lastBuffer);
+	free(actualBuffer);
+
+	inode.bytesFileSize -= sizeof(struct t2fs_record);
+
+	writeInode(0, inode, partitionMounted);
+
 	return 0;
 }
 

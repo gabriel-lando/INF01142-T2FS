@@ -698,7 +698,7 @@ Retorna eventual sinaliza��o de erro
 */
 void cmdDelete(void) {
 
-	char* token = strtok(NULL, " \t");
+	char* token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -837,7 +837,7 @@ void cmdLn(void) {
 		return;
 	}
 
-	token = strtok(NULL, " \t");
+	token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter LINKNAME\n");
 		return;
