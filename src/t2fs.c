@@ -634,6 +634,11 @@ int sln2(char* linkname, char* filename) {
 	}
 
 	struct t2fs_record record;
+	if (findFileByName(linknameCpy, &record) != 0) {
+		DEBUG("#ERRO sln2: linkname ja existe\n");
+		return -16;
+	}
+
 	if (findFileByName(filenameCpy, &record) <= 0) {
 		DEBUG("#ERRO sln2: arquivo nao existe\n");
 		return -10;
@@ -687,6 +692,11 @@ int hln2(char* linkname, char* filename) {
 	}
 
 	struct t2fs_record record;
+	if (findFileByName(linknameCpy, &record) != 0) {
+		DEBUG("#ERRO hln2: linkname ja existe\n");
+		return -16;
+	}
+
 	if (findFileByName(filenameCpy, &record) <= 0) {
 		DEBUG("#ERRO hln2: arquivo nao existe\n");
 		return -10;

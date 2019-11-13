@@ -10,12 +10,13 @@ Retornos:
 		-7: Erro em operacoes com funcoes de bitmap
 		-8: Entrada nao existe no registro de entradas de diretorio
 		-9: Bloco nao existe no inode
-		-10: Arquivo não encontrado
+		-10: Arquivo nao encontrado
 		-11: Filename incorreto
 		-12: Inode excedeu o limite de blocos
 		-13: Limite de arquivos abertos excedido
 		-14: HANDLE invalido
 		-15: Particao ou diretorio nao montado
+		-16: Linkname ja existe
 */
 
 #ifndef __LIBT2FS___
