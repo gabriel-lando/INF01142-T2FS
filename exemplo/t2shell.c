@@ -561,9 +561,14 @@ void cmdFscp(void) {
 			return;
 		}
 		// Copia os dados de source para destination
-		char buffer[2];
-		while (fread((void*)buffer, (size_t)1, (size_t)1, hSrc) == 1) {
-			write2(hDst, buffer, 1);
+		char buffer[SECTOR_SIZE + 1];
+		int bytesRead = 0;
+		int bytesWritten = 0;
+		while ((bytesRead = fread((void*)buffer, (size_t)1, (size_t)SECTOR_SIZE, hSrc)) > 0) {
+			if ((bytesWritten = write2(hDst, buffer, bytesRead)) != bytesRead) {
+				printf("Error on write operation. Error: %d\n", bytesWritten);
+				return;
+			}
 		}
 		// Fecha os arquicos
 		fclose(hSrc);
@@ -586,9 +591,14 @@ void cmdFscp(void) {
 			return;
 		}
 		// Copia os dados de source para destination
-		char buffer[2];
-		while (read2(hSrc, buffer, 1) == 1) {
-			fwrite((void*)buffer, (size_t)1, (size_t)1, hDst);
+		char buffer[SECTOR_SIZE + 1];
+		int bytesRead = 0;
+		int bytesWritten = 0;
+		while ((bytesRead = read2(hSrc, buffer, SECTOR_SIZE)) > 0) {
+			if ((bytesWritten = fwrite((void*)buffer, (size_t)1, (size_t)SECTOR_SIZE, hDst)) != bytesRead) {
+				printf("Error on write operation. Expected: %d. Written: %d\n", bytesRead, bytesWritten);
+				break;
+			}
 		}
 		// Fecha os arquicos
 		close2(hSrc);
