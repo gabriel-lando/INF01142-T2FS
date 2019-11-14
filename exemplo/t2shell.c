@@ -16,8 +16,6 @@ void cmdFormat(void);
 
 void cmdWho(void);
 void cmdLs(void);
-void cmdMkdir(void);
-void cmdRmdir(void);
 
 void cmdOpen(void);
 void cmdRead(void);
@@ -26,16 +24,11 @@ void cmdClose(void);
 void cmdWrite(void);
 void cmdCreate(void);
 void cmdDelete(void);
-void cmdSeek(void);
-void cmdTrunc(void);
 
 void cmdLn(void);
 
 void cmdCp(void);
 void cmdFscp(void);
-
-void cmdGetCW(void);
-void cmdChangeCW(void);
 
 void cmdMount(void);
 void cmdUmount(void);
@@ -81,7 +74,6 @@ char helpWrite[] = "[hdl] [str]  -> write [str] bytes to file [hdl]";
 char helpCreate[] = "[file]       -> create new [file] in T2FS";
 char helpDelete[] = "[file]       -> deletes [file] from T2FS";
 char helpSeek[] = "[hdl] [pos]  -> set CP of [hdl] file on [pos]";
-char helpTrunc[] = "[hdl] [siz]  -> truncate file [hdl] to [siz] bytes";
 char helpLn[] = "[type] [lnk] [file] -> create soft [-s] or hard [-h] link [lnk] to [file]";
 char helpFormat[] = "[part]  [bs] -> format virtual disk";
 
@@ -104,9 +96,10 @@ struct {
 	void (*f)(void);
 } cmdList[] = {
 	{ "exit", helpExit, cmdExit }, { "x", helpExit, cmdExit },
-	{ "man", helpMan, cmdMan },
 	{ "who", helpWho, cmdWho }, { "id", helpWho, cmdWho },
 	{ "dir", helpLs, cmdLs }, { "ls", helpLs, cmdLs },
+
+	{ "man", helpMan, cmdMan },
 
 	{ "open", helpOpen, cmdOpen },
 	{ "read", helpRead, cmdRead }, { "rd", helpRead, cmdRead },
@@ -114,8 +107,6 @@ struct {
 	{ "write", helpWrite, cmdWrite }, { "wr", helpWrite, cmdWrite },
 	{ "create", helpCreate, cmdCreate }, { "cr", helpCreate, cmdCreate },
 	{ "delete", helpDelete, cmdDelete }, { "del", helpDelete, cmdDelete },
-	{ "seek", helpSeek, cmdSeek }, { "sk", helpSeek, cmdSeek },
-	{ "truncate", helpTrunc, cmdTrunc }, { "trunc", helpTrunc, cmdTrunc }, { "tk", helpTrunc, cmdTrunc },
 
 	{ "ln", helpLn, cmdLn },
 	{ "format", helpFormat, cmdFormat },
@@ -139,6 +130,26 @@ void tst_identify() {
 	err = identify2(name, 256);
 	if (err) {
 		printf("Erro: %d\n", err);
+		return;
+	}
+
+	printf("Ok!\n\n");
+}
+
+void tst_format(int partition, int sector_per_block) {
+	int err;
+
+	printf("Teste do format2() e mount()\n");
+
+	err = format2(partition, sector_per_block);
+
+	if (err < 0) {
+		printf("Erro: Format %d (Erro=%d)\n", partition, err);
+		return;
+	}
+
+	if (mount(partition)) {
+		printf("Erro: mount %d (Erro=%d)\n", partition, err);
 		return;
 	}
 
@@ -204,7 +215,7 @@ void tst_list_dir(char* src) {
 
 	printf("Teste do opendir(), readdir() e closedir()\n");
 
-	// Abre o diret�rio pedido
+	// Abre o diretorio pedido
 	d = opendir2();
 	if (d < 0) {
 		printf("Erro: Opendir %s (handle=%d)\n", src, d);
@@ -223,47 +234,6 @@ void tst_list_dir(char* src) {
 		return;
 	}
 	printf("Ok!\n\n");
-}
-
-void tst_seek(char* src, int seek_pos) {
-	/*char buffer[256];
-	FILE2 hSrc;
-	int err;
-
-	printf ("Teste do seek2()\n");
-
-	hSrc = open2 (src);
-	if (hSrc<0) {
-		printf ("Erro: Open %s (handle=%d)\n", src, hSrc);
-		return;
-	}
-
-	err = seek2(hSrc, seek_pos);
-	if (err<0) {
-		printf ("Error: Seek %s (handle=%d), err=%d\n", src, hSrc, err);
-		close2(hSrc);
-		return;
-	}
-
-	err = read2(hSrc, buffer, 256);
-	if (err<0) {
-		printf ("Error: Read %s (handle=%d), err=%d\n", src, hSrc, err);
-		close2(hSrc);
-		return;
-	}
-	if (err==0) {
-		printf ("Error: Arquivo vazio %s (handle=%d)\n", src, hSrc);
-		close2(hSrc);
-		return;
-	}
-
-	dump(buffer, err);
-
-	if (close2(hSrc)) {
-		printf ("Erro: Close (handle=%d)\n", hSrc);
-		return;
-	}
-	printf ("Ok!\n\n");*/
 }
 
 void tst_create(char* src) {
@@ -315,42 +285,6 @@ void tst_write(char* src, char* texto) {
 
 }
 
-void tst_truncate(char* src, int size) {
-	/*FILE2 handle;
-	int err;
-
-	printf ("Teste do truncate2()\n");
-
-	handle = open2(src);
-	if (handle<0) {
-		printf ("Erro: Open %s, handle=%d\n", src, handle);
-		return;
-	}
-
-	// posiciona CP na posicao selecionada
-	err = seek2(handle, size);
-	if (err<0) {
-		printf ("Error: Seek %s, handle=%d, pos=%d, err=%d\n", src, handle, size, err);
-		close2(handle);
-		return;
-	}
-
-	// trunca
-	err = truncate2(handle);
-	if (err<0) {
-		printf ("Error: Truncate %s, handle=%d, pos=%d, err=%d\n", src, handle, size, err);
-		close2(handle);
-		return;
-	}
-
-	if (close2(handle)) {
-		printf ("Erro: Close (handle=%d)\n", handle);
-		return;
-	}
-
-	printf ("Ok!\n\n");*/
-}
-
 void tst_delete(char* src) {
 	int err;
 
@@ -366,21 +300,20 @@ void tst_delete(char* src) {
 
 }
 
-
-
-
 void teste(int tstNumber) {
-	if (tstNumber < 0) {
+	if (tstNumber < 0 || tstNumber > 9) {
 		printf(" 1 - identify2()\n");
-		printf(" 2 - open        open2,close2          [x.txt]\n");
-		printf(" 3 - read        open2,read2,close2    [x.txt]\n");
-		printf(" 4 - list_dir                          [.]\n");
-		printf(" 5 - seek        open2,seek2,close2    [x.txt; 7]\n");
 
-		printf(" 6 - create      create2,close2        [y.txt]\n");
-		printf(" 7 - write       open,write,close      [y.txt, abced...]\n");
-		printf(" 8 - truncate    open,truncate,close   [y.txt, 11]\n");
-		printf(" 9 - delete      delete2               [y.txt]\n");
+		printf(" 2 - format      format2,mount2          [0 2]\n");
+
+		printf(" 3 - create      create2,write2,close2   [x.txt, \"teste\"]]\n");
+		printf(" 4 - open        open2,close2            [x.txt]\n");
+		printf(" 5 - read        open2,read2,close2      [x.txt]\n");
+		printf(" 6 - list_dir                            [.]\n");
+
+		printf(" 7 - create      create2,close2          [y.txt]\n");
+		printf(" 8 - write       open,write,close        [y.txt, abced...]\n");
+		printf(" 9 - delete      delete2                 [y.txt]\n");
 
 		return;
 	}
@@ -389,35 +322,35 @@ void teste(int tstNumber) {
 		tst_identify();
 		break;
 	case 2:
-		tst_open("x.txt");
+		tst_format(0, 2);
 		break;
 	case 3:
-		tst_read("x.txt");
+		tst_create("x.txt");
+		tst_write("x.txt", "teste");
+		tst_list_dir(".");		// Verificacao
 		break;
 	case 4:
-		tst_list_dir(".");
+		tst_open("x.txt");
 		break;
 	case 5:
-		tst_seek("x.txt", 7);
+		tst_read("x.txt");
+		break;
+	case 6:
+		tst_list_dir(".");
 		break;
 
-	case 6:
-		tst_create("y.txt");
-		tst_list_dir(".");		// Verifica��o
-		break;
 	case 7:
-		tst_write("y.txt", "[abcdefghijklmnopqrst]");
-		tst_read("y.txt");		// Verifica��o
+		tst_create("y.txt");
+		tst_list_dir(".");		// Verificacao
 		break;
 	case 8:
-		tst_truncate("y.txt", 11);
-		tst_read("y.txt");		// Verifica��o
+		tst_write("y.txt", "[abcdefghijklmnopqrst]");
+		tst_read("y.txt");		// Verificacao
 		break;
 	case 9:
 		tst_delete("y.txt");
-		tst_list_dir(".");		// Verifica��o
+		tst_list_dir(".");		// Verificacao
 		break;
-
 	}
 }
 
@@ -432,7 +365,7 @@ int main()
 	printf("Testing for T2FS - v 2018.1.2\n");
 	//token = strtok("who"," \t");
 	strcpy(cmd, "man");
-	token = strtok(cmd, " \t");
+	token = strtok(cmd, " \t\n");
 	cmdMan();
 
 	flagEncerrar = 0;
@@ -441,7 +374,7 @@ int main()
 		fgets(cmd, sizeof(cmd), stdin);
 		//gets(cmd);
 		if ((token = strtok(cmd, " \t\n")) != NULL) {
-			// Verifica se � comando de teste
+			// Verifica se eh comando de teste
 			n = atoi(token);
 			if (n) {
 				teste(n);
@@ -467,7 +400,7 @@ int main()
 }
 
 /**
-Encerra a opera��o do teste
+Encerra a operacao do teste
 */
 void cmdExit(void) {
 	printf("bye, bye!\n");
@@ -502,7 +435,7 @@ void cmdMan(void) {
 
 
 /**
-Chama a fun��o que formata o disco
+Chama a funcao que formata o disco
 */
 void cmdFormat(void) {
 	int partition;
@@ -553,15 +486,15 @@ void cmdWho(void) {
 
 /**
 Copia arquivo dentro do T2FS
-Os parametros s�o:
+Os parametros sao:
 	primeiro parametro => arquivo origem
 	segundo parametro  => arquivo destino
 */
 void cmdCp(void) {
 
 	// Pega os nomes dos arquivos origem e destion
-	char* src = strtok(NULL, " \t");
-	char* dst = strtok(NULL, " \t");
+	char* src = strtok(NULL, " \t\n");
+	char* dst = strtok(NULL, " \t\n");
 	if (src == NULL || dst == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -602,9 +535,9 @@ Os parametros s�o:
 */
 void cmdFscp(void) {
 	// Pega a dire��o e os nomes dos arquivos origem e destion
-	char* direcao = strtok(NULL, " \t");
-	char* src = strtok(NULL, " \t");
-	char* dst = strtok(NULL, " \t");
+	char* direcao = strtok(NULL, " \t\n");
+	char* src = strtok(NULL, " \t\n");
+	char* dst = strtok(NULL, " \t\n");
 	if (direcao == NULL || src == NULL || dst == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -677,7 +610,7 @@ Retorna o HANDLE do arquivo criado
 void cmdCreate(void) {
 	FILE2 hFile;
 
-	char* token = strtok(NULL, " \t");
+	char* token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -744,7 +677,7 @@ Retorna mensagem de opera��o completada
 void cmdClose(void) {
 	FILE2 handle;
 
-	char* token = strtok(NULL, " \t");
+	char* token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -770,7 +703,7 @@ void cmdRead(void) {
 	int size;
 
 	// get first parameter => file handle
-	char* token = strtok(NULL, " \t");
+	char* token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -781,7 +714,7 @@ void cmdRead(void) {
 	}
 
 	// get second parameter => number of bytes
-	token = strtok(NULL, " \t");
+	token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -823,7 +756,7 @@ void cmdLn(void) {
 	int isHard = -1;
 
 	// get first parameter => link name
-	char* token = strtok(NULL, " \t");
+	char* token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter -s or -h\n");
 		return;
@@ -852,7 +785,6 @@ void cmdLn(void) {
 	}
 
 	// make link
-	// err = ln2 (linkname, token);
 	if (isHard)
 		err = hln2(linkname, token);
 	else
@@ -862,7 +794,7 @@ void cmdLn(void) {
 		return;
 	}
 
-	printf("Created %slink %s to file %s\n", isHard ? "hard" : "soft",linkname, token);
+	printf("Created %slink \"%s\" to file \"%s\"\n", isHard ? "hard" : "soft",linkname, token);
 
 }
 
@@ -873,7 +805,7 @@ void cmdWrite(void) {
 	int err;
 
 	// get first parameter => file handle
-	char* token = strtok(NULL, " \t");
+	char* token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -884,7 +816,7 @@ void cmdWrite(void) {
 	}
 
 	// get second parameter => string
-	token = strtok(NULL, " \t");
+	token = strtok(NULL, " \t\n");
 	if (token == NULL) {
 		printf("Missing parameter\n");
 		return;
@@ -926,54 +858,6 @@ void cmdLs(void) {
 
 }
 
-
-/**
-Chama a fun��o truncate2() da biblioteca e coloca o string de retorno na tela
-*/
-void cmdTrunc(void) {
-	/*FILE2 handle;
-	int size;
-
-	// get first parameter => file handle
-	char *token = strtok(NULL," \t");
-	if (token==NULL) {
-		printf ("Missing parameter\n");
-		return;
-	}
-	if (sscanf(token, "%d", &handle)==0) {
-		printf ("Invalid parameter\n");
-		return;
-	}
-
-	// get second parameter => number of bytes
-	token = strtok(NULL," \t");
-	if (token==NULL) {
-		printf ("Missing parameter\n");
-		return;
-	}
-	if (sscanf(token, "%d", &size)==0) {
-		printf ("Invalid parameter\n");
-		return;
-	}
-
-	// posiciona CP na posicao selecionada
-	int err = seek2(handle, size);
-	if (err<0) {
-		printf ("Error seek2: %d\n", err);
-		return;
-	}
-
-	// trunca
-	err = truncate2(handle);
-	if (err<0) {
-		printf ("Error truncate2: %d\n", err);
-		return;
-	}
-
-	// show bytes read
-	printf ("file-handle %d truncated to %d bytes\n", handle, size );*/
-}
-
 /**
 Monta uma particao do disco
 */
@@ -999,6 +883,9 @@ void cmdMount(void) {
 	printf("Partition %d mounted\n", partition);
 }
 
+/**
+Desmonta a particao do disco atualmente montada
+*/
 void cmdUmount(void) {
 	int ret = umount();
 	if (ret < 0) {
@@ -1008,8 +895,4 @@ void cmdUmount(void) {
 
 	printf("Partition unmounted\n");
 }
-
-void cmdSeek(void) {
-}
-
 
